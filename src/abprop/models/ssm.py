@@ -4,6 +4,8 @@ Pure PyTorch implementation of Mamba (Selective State Space Model) components.
 This module provides a portable, CUDA-free implementation of the S6 block described in
 'Mamba: Linear-Time Sequence Modeling with Selective State Spaces' (Gu & Dao, 2023).
 It is designed for rapid prototyping and architectural exploration in AbProp.
+Note: the scan is implemented as a Python loop (reference-quality), so it is not
+optimized for throughput even though the theoretical complexity is O(L).
 """
 
 import math

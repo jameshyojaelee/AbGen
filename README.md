@@ -8,12 +8,12 @@
 
 **State-of-the-art Generative Antibody Design**, powered by **Selective State Space Models (Mamba)** and **Direct Preference Optimization (DPO)**.
 
-AbGen moves beyond simple property prediction to true *generative design*. It combines modern engineering (RoPE, RMSNorm) with cutting-edge sequence modeling (Linear-time SSMs) to design antibodies that meet complex developability and binding constraints.
+AbGen moves beyond simple property prediction to true *generative design*. It combines modern engineering (RoPE, RMSNorm) with SSM-based sequence modeling (reference implementation of Mamba) to design antibodies that meet complex developability and binding constraints.
 
 ---
 ## Key Features
 
-- **Next-Gen Architecture**: Choose between **Mamba-S6** (linear scaling for long complexes) or modernized **Transformers** (RoPE, RMSNorm, SwiGLU).
+- **Next-Gen Architecture**: Choose between **Mamba-S6** (reference implementation; O(L) scan in Python, not optimized) or modernized **Transformers** (RoPE, RMSNorm, SwiGLU).
 - **Generative Alignment**: Align models to biophysical constraints using **Direct Preference Optimization (DPO)**—no reinforcement learning required.
 - **Battle-Tested Engineering**: End-to-end tooling including ETL, distributed training, benchmark registries, and Streamlit dashboards.
 
@@ -34,7 +34,7 @@ pip install -e '.[dev,serve,bench,viz,dashboard]'
 
 ### 2. Train a Mamba Model
 
-Train a linearly-scaling State Space Model on antibody sequences:
+Train a reference Mamba/SSM model on antibody sequences:
 
 ```bash
 python scripts/train.py \
