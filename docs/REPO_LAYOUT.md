@@ -16,7 +16,7 @@
 - `docs/evaluation/` — results/leaderboard + guardrails
 - `docs/data/` — dataset pointers
 - `docs/reference/` — status, reproducibility, limitations
-- Stubs in `docs/*.md` keep old links working.
+- Stubs removed; links should target the subfolders above.
 
 ## Scripts
 - Core: `scripts/train.py`, `scripts/eval.py`, `scripts/etl.py`, `scripts/run_benchmarks.py`, `scripts/run_guardrails.py`, `scripts/generate.py`, `scripts/train_dpo.py`.
