@@ -8,7 +8,7 @@
 
 **State-of-the-art Generative Antibody Design**, powered by **Selective State Space Models (Mamba)** and **Direct Preference Optimization (DPO)**.
 
-AbGen (formerly AbProp) moves beyond simple property prediction to true *generative design*. It combines modern engineering (RoPE, RMSNorm) with cutting-edge sequence modeling (Linear-time SSMs) to design antibodies that meet complex developability and binding constraints.
+AbGen moves beyond simple property prediction to true *generative design*. It combines modern engineering (RoPE, RMSNorm) with cutting-edge sequence modeling (Linear-time SSMs) to design antibodies that meet complex developability and binding constraints.
 
 ---
 
