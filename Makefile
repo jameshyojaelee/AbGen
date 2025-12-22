@@ -25,10 +25,10 @@ test:
 	PYTHONPATH=src pytest -q
 
 train:
-	abprop-train --distributed none
+	abgen-train --distributed none
 
 dist-train:
-	abprop-launch --nodes 1 --gpus-per-node 4 --config configs/train.yaml
+	abgen-launch --nodes 1 --gpus-per-node 4 --config configs/train.yaml
 
 clean:
 	rm -rf build dist .pytest_cache *.egg-info

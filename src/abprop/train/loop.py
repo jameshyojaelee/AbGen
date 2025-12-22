@@ -217,6 +217,7 @@ class TrainLoop:
         self._init_fsdp_metadata()
 
         self.train_history: List[float] = [] if self.is_rank_zero else []
+        self.eval_history: List[Dict[str, float]] = [] if self.is_rank_zero else []
         self.best_metric: Optional[float] = None
         self.best_checkpoint_path = self.checkpoint_dir / "best.pt"
         self.last_checkpoint_path = self.checkpoint_dir / "last.pt"
@@ -446,6 +447,7 @@ class TrainLoop:
                 eval_metrics = None
                 if self.is_rank_zero:
                     eval_metrics = self._run_eval(eval_dataloader)
+                    self.eval_history.append({"step": float(step), **eval_metrics})
                     self.logger.log_metrics(eval_metrics, step=step, tag="eval")
                     mlflow_log_metrics({f"eval/{k}": v for k, v in eval_metrics.items()}, step=step)
                     metric_value = eval_metrics.get(self.config.best_metric, eval_metrics["loss"])

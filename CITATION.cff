@@ -1,13 +1,13 @@
 cff-version: 1.2.0
-message: "If you use AbProp in your work, please cite:"
-title: "AbProp: Antibody Property Modeling Toolkit"
+message: "If you use AbGen in your work, please cite:"
+title: "AbGen: Generative Antibody Design Toolkit"
 version: 0.1.0
 authors:
   - family-names: "Lee"
     given-names: "James"
-  - name: "AbProp"
-repository-code: "https://example.com/abprop/source"
+  - name: "AbGen"
+repository-code: "https://example.com/abgen/source"
 abstract: |
-  AbProp is a sequence-only antibody modeling toolkit that provides training, evaluation,
-  interpretability, and deployment assets for property prediction workflows.
+  AbGen is a sequence-only antibody modeling toolkit that provides training, evaluation,
+  interpretability, and deployment assets for generative and property prediction workflows.
 date-released: 2025-10-10

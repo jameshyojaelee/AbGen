@@ -13,6 +13,16 @@ from abprop.models import TransformerConfig
 from abprop.tokenizers import TOKEN_TO_ID
 
 
+def _write_dataset(df: pd.DataFrame, path: Path) -> Path:
+    try:
+        df.to_parquet(path, index=False)
+        return path
+    except Exception:
+        csv_path = path.with_suffix(".csv")
+        df.to_csv(csv_path, index=False)
+        return csv_path
+
+
 def _make_parquet_dataset(tmp_path: Path) -> Path:
     records = []
     lengths = [5, 8, 15, 22, 35, 48]
@@ -38,8 +48,7 @@ def _make_parquet_dataset(tmp_path: Path) -> Path:
         )
     df = pd.DataFrame.from_records(records)
     path = tmp_path / "oas.parquet"
-    df.to_parquet(path, index=False)
-    return path
+    return _write_dataset(df, path)
 
 
 def test_bucket_batch_sampler_groups_similar_lengths(tmp_path: Path):
@@ -138,13 +147,13 @@ def test_build_oas_dataloaders_uses_configured_dataset(tmp_path: Path):
         },
     ]
     parquet_path = dataset_dir / "oas_sequences.parquet"
-    pd.DataFrame.from_records(records).to_parquet(parquet_path, index=False)
+    actual_path = _write_dataset(pd.DataFrame.from_records(records), parquet_path)
 
     data_cfg = {
         "processed_dir": str(processed_dir),
         "parquet": {
             "output_dir": "oas_real_full",
-            "filename": "oas_sequences.parquet",
+            "filename": actual_path.name,
         },
         "length_bins": [8, 16, 32],
     }

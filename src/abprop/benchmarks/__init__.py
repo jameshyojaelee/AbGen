@@ -32,6 +32,7 @@ from .registry import Benchmark, BenchmarkConfig, BenchmarkRegistry, BenchmarkRe
 
 # Import all benchmark implementations to trigger registration
 from . import cdr_classification_benchmark
+from . import design_benchmark
 from . import developability_benchmark
 from . import liability_benchmark
 from . import perplexity_benchmark
@@ -45,6 +46,7 @@ __all__ = [
     "BenchmarkRegistry",
     "get_registry",
     "cdr_classification_benchmark",
+    "design_benchmark",
     "developability_benchmark",
     "liability_benchmark",
     "perplexity_benchmark",

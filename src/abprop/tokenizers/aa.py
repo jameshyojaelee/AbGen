@@ -131,6 +131,16 @@ def apply_mlm_mask(
     rand = torch.rand(input_ids.shape, device=input_ids.device, generator=rng)
     masked_indices = rand < mlm_probability
     masked_indices &= candidate_mask
+    if masked_indices.sum(dim=1).min().item() == 0:
+        # Ensure at least one masked token per sequence when candidates exist.
+        for row in range(masked_indices.size(0)):
+            if masked_indices[row].any():
+                continue
+            candidates = torch.nonzero(candidate_mask[row], as_tuple=False).view(-1)
+            if candidates.numel() == 0:
+                continue
+            pick = candidates[torch.randint(candidates.numel(), (1,), generator=rng)]
+            masked_indices[row, pick] = True
     labels[~masked_indices] = -100
 
     # 80% replace with <mask>

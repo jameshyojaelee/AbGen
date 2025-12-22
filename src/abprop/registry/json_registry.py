@@ -51,7 +51,6 @@ class ModelRegistry:
 
     def register(
         self,
-        *,
         model_id: str,
         checkpoint: Path | str,
         config: Dict[str, object],

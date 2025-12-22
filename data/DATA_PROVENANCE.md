@@ -6,6 +6,11 @@
 | Benchmark fixtures | `data/benchmarks/` | Derived from OAS + curated therapeutic set | Used for deterministic regression checks. |
 | Demo sequences | `examples/attention_success.fa`, `examples/attention_failure.fa` | Synthetic heavy chains | Safe for public demos. |
 
+## Policy
+
+- `data/raw/` is ignored by git and should be populated via the fetch/ETL scripts.
+- Small, curated fixtures live under `tests/fixtures/` for unit tests.
+
 ## Regeneration
 
 1. Download raw OAS data following the licensing terms.

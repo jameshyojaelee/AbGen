@@ -397,7 +397,7 @@ def main():
         print(f"\n✓ Saved {len(formatted)} sequences to: {args.output}")
         print(f"\nColumns: {list(formatted.columns)}")
         print("\nNext steps:")
-        print(f"  abprop-etl --input {args.output} --out data/processed/oas")
+        print(f"  abgen-etl --input {args.output} --out data/processed/oas")
 
     except Exception as e:
         print(f"\nERROR: {e}")

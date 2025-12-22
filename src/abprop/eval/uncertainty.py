@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from abprop.eval.perplexity import causal_perplexity_from_logits, mlm_perplexity_from_logits

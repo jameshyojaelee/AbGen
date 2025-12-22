@@ -94,11 +94,9 @@ class OASDataset(Dataset):
                 self.columns -= missing_optional
 
         read_columns = None if columns is None else list(self.columns | {"split"})
-        df = pd.read_parquet(
-            self.parquet_dir,
-            columns=read_columns,
-            filters=[("split", "=", split)],
-        )
+        df = self._read_dataset(read_columns)
+        if "split" in df.columns:
+            df = df[df["split"] == split]
         if df.empty:
             raise ValueError(f"No records found for split '{split}' in {self.parquet_dir}.")
         if "liability_ln" in df.columns:
@@ -122,6 +120,31 @@ class OASDataset(Dataset):
                 "split",
             }
         ]
+
+    def _read_dataset(self, read_columns: Optional[Sequence[str]]) -> pd.DataFrame:
+        path = self.parquet_dir
+        if path.is_dir():
+            csv_path = path / "data.csv"
+            if csv_path.exists():
+                return pd.read_csv(csv_path, usecols=read_columns)
+            json_path = path / "data.jsonl"
+            if json_path.exists():
+                return pd.read_json(json_path, lines=True)
+        if path.suffix.lower() in {".csv", ".tsv"}:
+            return pd.read_csv(path, usecols=read_columns)
+        if path.suffix.lower() in {".json", ".jsonl"}:
+            return pd.read_json(path, lines=path.suffix.lower() == ".jsonl")
+        try:
+            return pd.read_parquet(
+                path,
+                columns=read_columns,
+                filters=[("split", "=", self.split)],
+            )
+        except (ImportError, OSError):
+            csv_fallback = path.with_suffix(".csv")
+            if csv_fallback.exists():
+                return pd.read_csv(csv_fallback, usecols=read_columns)
+            raise
 
     def __len__(self) -> int:
         return len(self.frame)

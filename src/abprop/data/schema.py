@@ -73,9 +73,25 @@ def validate_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _read_dataset(path: Path | str) -> pd.DataFrame:
+    data_path = Path(path)
+    if data_path.is_dir():
+        csv_path = data_path / "data.csv"
+        if csv_path.exists():
+            return pd.read_csv(csv_path)
+        json_path = data_path / "data.jsonl"
+        if json_path.exists():
+            return pd.read_json(json_path, lines=True)
+    if data_path.suffix.lower() in {".csv", ".tsv"}:
+        return pd.read_csv(data_path)
+    if data_path.suffix.lower() in {".json", ".jsonl"}:
+        return pd.read_json(data_path, lines=data_path.suffix.lower() == ".jsonl")
+    return pd.read_parquet(data_path)
+
+
 def validate_parquet_dataset(path: Path | str) -> pd.DataFrame:
-    """Load a Parquet dataset directory/file and validate."""
-    df = pd.read_parquet(path)
+    """Load a Parquet dataset directory/file (or CSV fallback) and validate."""
+    df = _read_dataset(path)
     return validate_dataframe(df)
 
 
@@ -84,4 +100,3 @@ def _close(lhs: float, rhs: float, tol: float = 1e-6) -> bool:
 
 
 __all__ = ["validate_parquet_dataset", "validate_dataframe"]
-

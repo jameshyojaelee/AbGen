@@ -1,82 +1,71 @@
-# AbProp Playbook
+# AbGen Playbook
 
-This playbook consolidates the day-to-day docs for setup, data preparation, training, evaluation, visualization, and automation. Use it as the single reference after reading the top-level [README](../README.md).
+This playbook is the navigation hub for day-to-day AbGen workflows: setup, data, training,
+preference modeling, generation, evaluation, and deployment.
 
 ---
 
-## 1. Environment & Tooling
+## Navigation
 
-| Option | Commands |
-|--------|----------|
-| **Pip** | `python -m venv .venv && source .venv/bin/activate && pip install -e '.[dev,serve,bench,viz,dashboard]'` |
-| **Conda** | `conda env create -f environment.yml && conda activate abprop` |
-| **Docker** | `docker build -t abprop . && docker run -it --rm -v "$PWD":/workspace -w /workspace abprop bash` |
-| **Colab** | Open [`notebooks/quickstart.ipynb`](https://colab.research.google.com/github/abprop/abprop/blob/main/notebooks/quickstart.ipynb) and run `!pip install git+https://github.com/abprop/abprop.git` |
+- **Training**: `docs/training/`
+- **Design & Preferences**: `docs/design/`
+- **Evaluation**: `docs/evaluation/`
+- **Data**: `docs/data/`
+- **Reference**: `docs/reference/`
 
-Common extras:
+Key docs:
+- Results: [docs/evaluation/RESULTS.md](evaluation/RESULTS.md)
+- Methods: [docs/design/METHODS.md](design/METHODS.md)
+- Limitations: [docs/reference/LIMITATIONS.md](reference/LIMITATIONS.md)
+- Reproducibility: [docs/reference/REPRODUCIBILITY.md](reference/REPRODUCIBILITY.md)
+- Status snapshot: [docs/reference/STATUS.md](reference/STATUS.md)
+- Case studies: [docs/design/CASE_STUDIES.md](design/CASE_STUDIES.md)
+- Leaderboard: [docs/evaluation/LEADERBOARD.md](evaluation/LEADERBOARD.md)
+
+---
+
+## Environment & Tooling
 
 ```bash
-pip install 'abprop[serve]'         # REST API
-pip install -r demo/requirements.txt # Public demo
-pip install -e '.[viz]'              # Attention/embedding tooling
-pip install -e '.[dashboard]'        # Streamlit dashboard
+# Pip
+python -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev,serve,bench,viz,dashboard]'
+
+# Conda
+conda env create -f environment.yml && conda activate abgen
+
+# Docker
+docker build -t abgen . && docker run -it --rm -v "$PWD":/workspace -w /workspace abgen bash
 ```
 
 ---
 
-## 2. Data Playbook
+## Core Workflows
 
-- **Primary snapshot**: `data/processed/oas_real_full/`
-  - 1,502 sequences (train 1,209 · val 144 · test 149)
-  - 38 species; heavy + light chains
-- **Provenance & checksums**: [data/DATA_PROVENANCE.md](../data/DATA_PROVENANCE.md)
-- **Acquire new data**:
-  ```bash
-  python scripts/fetch_real_antibody_data.py --source sabdab --output data/raw/sabdab_new.csv
-  python scripts/process_real_data_etl.py --input data/raw/sabdab_new.csv --output data/processed/oas_real_v3
-  ```
-- **Quick load**:
-  ```python
-  from abprop.data import OASDataset
-  ds = OASDataset("data/processed/oas_real_full", split="train")
-  sample = ds[0]
-  ```
-- Synthetic sandbox: `python scripts/download_oas_data.py --method synthetic --num-sequences 10000 ...`
+### 1) Train (Transformer)
+```bash
+python scripts/train.py \
+  --config-path configs/train.yaml \
+  --data-config configs/data.yaml \
+  --model-config configs/model.yaml \
+  --config-overrides "encoder_type=transformer" \
+  --output-dir outputs/transformer_run
+```
 
----
+### 2) Train (Mamba)
+```bash
+python scripts/train.py \
+  --config-path configs/train.yaml \
+  --data-config configs/data.yaml \
+  --model-config configs/model.yaml \
+  --config-overrides "encoder_type=mamba ssm_d_state=16" \
+  --output-dir outputs/mamba_run
+```
 
-## 3. Training Workflow
-
-1. **Configure**: tweak `configs/train.yaml`, `configs/model.yaml`, `configs/data.yaml`
-2. **Launch**:
-   ```bash
-   python scripts/train.py \
-     --config-path configs/train.yaml \
-     --data-config configs/data.yaml \
-     --model-config configs/model.yaml \
-     --output-dir outputs/real_data_run
-   ```
-3. **Distributed options**:
-   - Single GPU: `abprop-train --distributed none`
-   - Multi-GPU (single node): `torchrun --standalone --nproc_per_node 4 python -m abprop.commands.train --distributed ddp`
-   - Slurm helper: `python scripts/launch_slurm.py --nodes 2 --gpus-per-node 4 --config configs/train.yaml`
-4. **Monitoring**:
-   - Logs: `outputs/<run>/logs/metrics.csv`
-   - Checkpoints: `outputs/<run>/checkpoints/{last,best}.pt`
-   - MLflow: `export MLFLOW_TRACKING_URI=./mlruns && mlflow ui`
-5. **Troubleshooting**:
-   - Memory: lower `batch_size`, raise `grad_accumulation`
-   - NCCL: export `NCCL_DEBUG=warn` and reuse `slurm/env_nccl.sh`
-   - Import issues: rely on Docker/conda image or install missing BLAS (`libflexiblas3`)
-
----
-
-## 4. Evaluation & Interpretability
-
-### Core Evaluation
+### 3) Evaluate
 ```bash
 python scripts/eval.py \
-  --checkpoint outputs/real_data_run/checkpoints/best.pt \
+  --checkpoint outputs/transformer_run/checkpoints/best.pt \
   --data-config configs/data.yaml \
   --model-config configs/model.yaml \
   --splits val test \
@@ -84,95 +73,62 @@ python scripts/eval.py \
   --output outputs/eval/val_eval.json
 ```
 
-### Benchmark Suite
-- Run everything: `python scripts/run_benchmarks.py --checkpoint ... --all --html-report`
-- Specific tracks: `python scripts/run_benchmarks.py --checkpoint ... --benchmarks perplexity liability cdr_classification`
-- Quick reference metrics live in [LEADERBOARD.md](LEADERBOARD.md)
+### 4) Generate Candidates
+```bash
+python scripts/generate.py \
+  --checkpoint outputs/transformer_run/checkpoints/best.pt \
+  --num-samples 16 \
+  --length 120 \
+  --steps 6 \
+  --output-dir outputs/generation
+```
 
-### Visual Analytics
-- Attention: `python scripts/visualize_attention.py --checkpoint ... --sequence examples/attention_success.fa --output outputs/attention --label success --interactive`
-- Embeddings: `python scripts/visualize_embeddings.py --checkpoints ... --parquet data/processed/oas_real_full --splits val --reducers umap pca --dimensions 2 3 --output docs/figures/embeddings`
-- Publication figures: `python scripts/generate_paper_figures.py --style configs/publication.mplstyle --output docs/figures/publication --figures all`
+### 5) Build Preferences
+```bash
+python scripts/make_preferences.py \
+  --input examples/attention_success.fa \
+  --output outputs/preferences/pairs.jsonl
+```
 
-See [docs/RESULTS.md](RESULTS.md) for metrics tables and export recipes. Real-world narratives live in [docs/CASE_STUDIES.md](CASE_STUDIES.md).
-
----
-
-## 5. Dashboards & Demo
-
-| Tool | Command | Notes |
-|------|---------|-------|
-| Streamlit dashboard | `python scripts/launch_dashboard.py --root outputs --config configs/dashboard.example.json` | Pages: overview, benchmarks, attention, embeddings, sandbox, errors, checkpoint comparison |
-| Gradio demo | `python demo/app.py` | Supports FASTA input, liabilities, CDR highlighting, attention summaries, uncertainty, CSV/PDF export |
-
-Set `ABPROP_DASHBOARD_ROOT`/`ABPROP_DASHBOARD_CONFIG` and `ABPROP_DEMO_CHECKPOINT` to point at curated artifacts.
-
----
-
-## 6. Automation & Guardrails
-
-- Scheduled CI: `.github/workflows/benchmark.yml`
-- Guardrail script:  
-  ```bash
-  python scripts/check_regression.py \
-    --new benchmarks/results/latest.json \
-    --reference benchmarks/results/baseline_example.json \
-    --max-drop 0.05
-  ```
-- Artifact workflow:
-  1. Refresh baseline JSON & leaderboard
-  2. Trigger workflow or wait for weekly schedule
-  3. Inspect uploaded `benchmark-results` artifact
-  4. Promote improvements and update registry
+### 6) DPO Alignment
+```bash
+python scripts/train_dpo.py \
+  --synthetic \
+  --policy-checkpoint outputs/transformer_run/checkpoints/best.pt \
+  --ref-checkpoint outputs/transformer_run/checkpoints/best.pt \
+  --output-dir outputs/dpo_run
+```
 
 ---
 
-## 7. Cross-Validation & Ablations
+## Visualization & Dashboards
 
-- CV data loader helpers: `src/abprop/data/cross_validation.py` (grouped by clonotype)
-- Example script: `python scripts/train_cv.py --folds 5 --config configs/train.yaml`
-- Ablations:
-  ```bash
-  python scripts/run_ablations.py \
-    --config configs/ablations/liability_vs_mlm.yaml \
-    --output outputs/ablations
-  python scripts/analyze_ablations.py --input outputs/ablations --report docs/figures/publication/ablations.csv
-  ```
+- Attention: `python scripts/visualize_attention.py --checkpoint ... --sequence ... --output outputs/attention`
+- Embeddings: `python scripts/visualize_embeddings.py --checkpoints ... --parquet ... --output docs/figures/embeddings`
+- Streamlit: `python scripts/launch_dashboard.py --root outputs --config configs/dashboard.example.json`
+- Gradio demo: `python demo/app.py`
 
 ---
 
-## 8. Useful Script Index
+## Benchmarks
 
-| Purpose | Script |
-|---------|--------|
-| Fetch real antibody data | `scripts/fetch_real_antibody_data.py` |
-| ETL pipeline | `scripts/process_real_data_etl.py` |
-| Therapeutic curation | `scripts/curate_therapeutic_dataset.py` |
-| CDR gold standard | `scripts/build_cdr_gold_standard.py` |
-| Difficulty splits | `scripts/create_difficulty_splits.py` |
-| Difficulty plots | `scripts/plot_difficulty_performance.py` |
-| Registry maintenance | `scripts/registry.py` (`list`, `register`, `best`, `export-card`) |
-| Reproducibility sweeps | `scripts/reproduce_minimal.sh`, `scripts/reproduce_all.sh` |
+```bash
+python scripts/run_benchmarks.py \
+  --checkpoint outputs/transformer_run/checkpoints/best.pt \
+  --config configs/benchmarks.yaml
+```
 
----
-
-## 9. Dataset Snapshots
-
-| Dataset | Size | Description | Location |
-|---------|------|-------------|----------|
-| `oas_real_full` | 1,502 | Primary training corpus | `data/processed/oas_real_full/` |
-| `therapeutic_benchmark` | 55 | Clinical-progressed antibodies | `data/processed/therapeutic_benchmark/` |
-| `cdr_gold_standard` | 100 | Annotated CDR labels | `data/processed/cdr_gold_standard/` |
-| Synthetic sandbox | 10,000 | Random benchmark set | `data/processed/oas_synthetic/` |
+Design benchmark:
+```bash
+python scripts/run_design_benchmark.py \
+  --checkpoint outputs/transformer_run/checkpoints/best.pt \
+  --seeds tests/fixtures/toy_sequences.fa
+```
 
 ---
 
-## 10. Additional Resources
+## Reference
 
-- Results & figures: [docs/RESULTS.md](RESULTS.md)
-- Case studies: [docs/CASE_STUDIES.md](CASE_STUDIES.md)
-- Reproducibility checklist: [REPRODUCIBILITY.md](REPRODUCIBILITY.md)
-- Model registry cards: [../models/MODEL_CARDS.md](../models/MODEL_CARDS.md)
-- Demo quickstart (public): [demo/README.md](../demo/README.md)
-
-Keep this file authoritative when reorganizing docs—new topics should extend existing sections instead of spawning separate Markdown files.
+- Repo layout: [docs/REPO_LAYOUT.md](REPO_LAYOUT.md)
+- Config catalog: [configs/README.md](../configs/README.md)
+- Script catalog: [scripts/README.md](../scripts/README.md)

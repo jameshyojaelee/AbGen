@@ -76,6 +76,19 @@ outputs = model(input_ids, torch.ones_like(input_ids))
 print(f"Logits: {outputs['mlm_logits'].shape}")
 ```
 
+### 5. DPO Alignment (Synthetic Example)
+
+Align a policy checkpoint with a synthetic preference dataset:
+
+```bash
+python scripts/train_dpo.py \
+  --synthetic \
+  --policy-checkpoint outputs/transformer_run/checkpoints/best.pt \
+  --ref-checkpoint outputs/transformer_run/checkpoints/best.pt \
+  --output-dir outputs/dpo_run \
+  --model-id abgen-dpo-demo
+```
+
 ---
 
 ## Model Zoo & Benchmarks

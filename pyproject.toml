@@ -31,10 +31,11 @@ dependencies = [
 ]
 
 [project.scripts]
-abprop-etl = "abprop.commands.etl:main"
-abprop-train = "abprop.commands.train:main"
-abprop-eval = "abprop.commands.eval:main"
-abprop-launch = "abprop.commands.launch:main"
+abgen-etl = "abprop.commands.etl:main"
+abgen-train = "abprop.commands.train:main"
+abgen-eval = "abprop.commands.eval:main"
+abgen-launch = "abprop.commands.launch:main"
+abgen-dpo = "abprop.commands.dpo:main"
 
 [project.optional-dependencies]
 dev = [
@@ -64,9 +65,9 @@ dashboard = [
 ]
 
 [project.urls]
-Homepage = "https://example.com/abprop"
-Documentation = "https://example.com/abprop/docs"
-Source = "https://example.com/abprop/source"
+Homepage = "https://example.com/abgen"
+Documentation = "https://example.com/abgen/docs"
+Source = "https://example.com/abgen/source"
 
 [tool.setuptools.packages.find]
 where = ["src"]

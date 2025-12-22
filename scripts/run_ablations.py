@@ -111,7 +111,7 @@ def build_command(
 
 
 def summarise_metrics(log_dir: Path) -> Dict[str, Any]:
-    csv_path = log_dir / "abprop-train.csv"
+    csv_path = log_dir / "abgen-train.csv"
     if not csv_path.exists():
         return {}
     final_step = -1

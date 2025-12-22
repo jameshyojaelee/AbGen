@@ -207,7 +207,7 @@ def download_instructions_oas() -> str:
            --output data/raw/oas_human.tsv
 
     6. Verify the format and run ETL:
-       abprop-etl --input data/raw/oas_human.tsv --out data/processed/oas
+       abgen-etl --input data/raw/oas_human.tsv --out data/processed/oas
 
     Expected CSV/TSV columns from OAS:
     - sequence_alignment_aa (or sequence_aa)
@@ -329,7 +329,7 @@ def main():
         print(f"\nSaved to: {args.output}")
         print(f"Columns: {list(df.columns)}")
         print("\nNext steps:")
-        print(f"  abprop-etl --input {args.output} --out data/processed/oas")
+        print(f"  abgen-etl --input {args.output} --out data/processed/oas")
 
     elif args.method == "oas":
         print(download_instructions_oas())

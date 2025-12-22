@@ -124,7 +124,7 @@ def build_synthetic_dataloaders(
     distributed: bool,
     rank: int,
     world_size: int,
-    mlm_probability: float,
+    mlm_probability: float = 0.15,
 ) -> tuple[DataLoader, DataLoader]:
     motif = "ACDEFGHIKLMNPQRSTVWY"
     sequences = [(motif * ((i % 5) + 1))[:64] for i in range(num_samples)]
@@ -154,7 +154,7 @@ def build_oas_dataloaders(
     distributed: bool,
     rank: int,
     world_size: int,
-    mlm_probability: float,
+    mlm_probability: float = 0.15,
     train_fraction: float = 1.0,
     val_fraction: float = 1.0,
     seed: int = 42,

@@ -176,6 +176,7 @@ def train_single_fold(
     if args.synthetic or args.dry_run_steps > 0:
         # Use synthetic data for testing
         from abprop.commands.train import build_synthetic_dataloaders
+        mlm_probability = float(train_cfg.get("mlm_probability", 0.15))
         train_loader, val_loader = build_synthetic_dataloaders(
             model_config,
             batch_size,
@@ -183,6 +184,7 @@ def train_single_fold(
             distributed=dist_info["is_distributed"],
             rank=rank,
             world_size=dist_info["world_size"],
+            mlm_probability=mlm_probability,
         )
         max_steps = args.dry_run_steps if args.dry_run_steps > 0 else 100
     else:
@@ -292,18 +294,20 @@ def aggregate_cv_results(
             "values": values,
         }
 
+    payload = {
+        "n_folds": len(fold_metrics),
+        "aggregated_metrics": aggregated,
+        "fold_metrics": fold_metrics,
+    }
+
     # Save aggregated results
     results_path = output_dir / "cv_results.json"
     with open(results_path, "w") as f:
-        json.dump(
-            {
-                "n_folds": len(fold_metrics),
-                "aggregated_metrics": aggregated,
-                "fold_metrics": fold_metrics,
-            },
-            f,
-            indent=2,
-        )
+        json.dump(payload, f, indent=2)
+
+    summary_path = output_dir / "summary.json"
+    with open(summary_path, "w") as f:
+        json.dump(payload, f, indent=2)
 
     # Create summary table
     summary_data = []
@@ -388,6 +392,7 @@ def main(argv: list[str] | None = None) -> None:
 
         print(f"\nResults saved to: {args.output_dir}")
         print(f"  - cv_results.json: Full results with all fold metrics")
+        print(f"  - summary.json: Aggregated metrics for CI/automation")
         print(f"  - cv_summary.csv: Summary table with mean ± std")
 
     # Cleanup distributed
