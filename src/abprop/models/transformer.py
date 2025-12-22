@@ -12,6 +12,9 @@ from torch import nn
 from abprop.tokenizers import AMINO_ACIDS, SPECIAL_TOKENS
 from abprop.utils.liabilities import CANONICAL_LIABILITY_KEYS
 from abprop.eval.metrics import classification_summary, regression_summary
+from abprop.models.layers import RMSNorm, RotaryEmbedding, SwiGLU, get_norm_fn
+# Import Mamba
+from abprop.models.ssm import MambaEncoder, MambaConfig
 
 
 @dataclass
@@ -28,73 +31,16 @@ class TransformerConfig:
     cls_weight: float = 1.0
     reg_weight: float = 1.0
     # Modern Architecture Toggles
+    encoder_type: str = "transformer" # "transformer" or "mamba"
     use_rope: bool = True
     norm_type: str = "rmsnorm"  # "layernorm" or "rmsnorm"
     activation: str = "swiglu"  # "relu", "gelu", "swiglu"
-
-
-class RMSNorm(nn.Module):
-    def __init__(self, d_model: int, eps: float = 1e-8):
-        super().__init__()
-        self.eps = eps
-        self.scale = nn.Parameter(torch.ones(d_model))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        norm = torch.mean(x.pow(2), dim=-1, keepdim=True)
-        x_normed = x * torch.rsqrt(norm + self.eps)
-        return self.scale * x_normed
-
-
-class RotaryEmbedding(nn.Module):
-    def __init__(self, dim: int, max_seq_len: int = 2048, base: int = 10000):
-        super().__init__()
-        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
-        self.register_buffer("inv_freq", inv_freq)
-        self.max_seq_len = max_seq_len
-        self.dim = dim
-        self._set_cos_sin_cache(max_seq_len)
-
-    def _set_cos_sin_cache(self, seq_len: int, device: torch.device | None = None, dtype: torch.dtype | None = None):
-        self.max_seq_len = seq_len
-        t = torch.arange(seq_len, device=device, dtype=self.inv_freq.dtype)
-        freqs = torch.outer(t, self.inv_freq)
-        emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False)
-        self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
-
-    def forward(self, q: torch.Tensor, k: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # q, k: [batch, head, seq_len, head_dim]
-        seq_len = q.shape[2]
-        if seq_len > self.max_seq_len:
-            self._set_cos_sin_cache(seq_len, device=q.device, dtype=q.dtype)
-
-        cos = self.cos_cached[:, :, :seq_len, ...]
-        sin = self.sin_cached[:, :, :seq_len, ...]
-        
-        return (
-            self._apply_rotary_pos_emb(q, cos, sin),
-            self._apply_rotary_pos_emb(k, cos, sin),
-        )
-
-    def _apply_rotary_pos_emb(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
-        d = x.shape[-1] // 2
-        x1 = x[..., :d]
-        x2 = x[..., d:]
-        return (x * cos) + (torch.cat((-x2, x1), dim=-1) * sin)
-
-
-def _get_norm_fn(name: str, d_model: int, eps: float = 1e-5) -> nn.Module:
-    if name == "rmsnorm":
-        return RMSNorm(d_model, eps=eps)
-    if name == "layernorm":
-        return nn.LayerNorm(d_model, eps=eps)
-    raise ValueError(f"Unsupported norm '{name}'.")
-
-
-class SwiGLU(nn.Module):
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x, gate = x.chunk(2, dim=-1)
-        return F.silu(gate) * x
+    
+    # SSM / Mamba Params
+    ssm_d_state: int = 16
+    ssm_d_conv: int = 4
+    ssm_expand: int = 2
+    ssm_dt_rank: str = "auto"
 
 
 class TransformerEncoderLayerWithAttention(nn.Module):
@@ -146,8 +92,8 @@ class TransformerEncoderLayerWithAttention(nn.Module):
             else:
                 raise ValueError(f"Unsupported activation {activation}")
 
-        self.norm1 = _get_norm_fn(norm_type, d_model, layer_norm_eps)
-        self.norm2 = _get_norm_fn(norm_type, d_model, layer_norm_eps)
+        self.norm1 = get_norm_fn(norm_type, d_model, layer_norm_eps)
+        self.norm2 = get_norm_fn(norm_type, d_model, layer_norm_eps)
         self.dropout = nn.Dropout(dropout)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
@@ -166,18 +112,6 @@ class TransformerEncoderLayerWithAttention(nn.Module):
         x = self.norm1(src)
 
         # Apply RoPE if present
-        # nn.MultiheadAttention doesn't natively support RoPE callbacks.
-        # We need to manually handle query/key projection if we want strictly correct RoPE,
-        # OR we hack it by applying RoPE to 'x' before attention if x is used as Q,K.
-        # However, MultiheadAttention does internal projections Q = x W_q.
-        # Applying RoPE requires access to Q, K *after* projection but *before* attention.
-        # Standard nn.MultiheadAttention makes this hard.
-        #
-        # OPTION: Re-implement MHA or use Scaled Dot Product Attention (SDPA) manually.
-        # Given this is a demo of "novelty", implementing a clean manual SDPA with RoPE is better
-        # than hacking nn.MHA. `F.scaled_dot_product_attention` is efficient.
-        # Let's do a Manual MHA here for full control.
-        
         aln_output, attn_weights = self._mha_forward(
             x, x, x, 
             key_padding_mask=src_key_padding_mask,
@@ -210,25 +144,7 @@ class TransformerEncoderLayerWithAttention(nn.Module):
         return_attentions: bool
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         
-        # We will reuse the self.self_attn weights for convenience, or better,
-        # just use their parameters if we want to be compatible with loading weights?
-        # NOTE: Loading old weights into this new architecture will break anyway because
-        # of Pre-Norm/different shapes. So we can just act freely.
-        # To keep it simple, I'll allow self.self_attn to handle the projections if possible
-        # but since I need to inject RoPE, I need to extract Q, K, V.
-        #
-        # Workaround: Use self.self_attn.in_proj_weight/bias manually.
-        
         B, L, E = query.shape
-        # standard MHA packs q,k,v in one weight if possible, or separate.
-        # Let's assume standard usage of the existing module to keep code size low is tricky with RoPE.
-        # I'll just rely on `F.multi_head_attention_forward`? No, too complex.
-        #
-        # Simplified Manual Attn using the linear layers from self.self_attn
-        # But wait, self.self_attn is an opaque bucket.
-        # Let's just define our own projections if we are replacing the architecture.
-        # To be safe and cleaner: WE IGNORE self.self_attn and define new layers?
-        # No, let's try to grab weights from it to not break initialization logic if reused.
         
         qkv = self.self_attn.in_proj_weight
         bias = self.self_attn.in_proj_bias
@@ -238,8 +154,7 @@ class TransformerEncoderLayerWithAttention(nn.Module):
             qkv_out = F.linear(query, qkv, bias)
             q, k, v = qkv_out.chunk(3, dim=-1)
         else:
-             # Separated (if bias/kdim/vdim were different, but defaults are same)
-             # Fallback to separate
+             # Separated
              q = F.linear(query, self.self_attn.q_proj_weight, self.self_attn.q_proj_bias)
              k = F.linear(key, self.self_attn.k_proj_weight, self.self_attn.k_proj_bias)
              v = F.linear(value, self.self_attn.v_proj_weight, self.self_attn.v_proj_bias)
@@ -254,54 +169,27 @@ class TransformerEncoderLayerWithAttention(nn.Module):
             q, k = self.rotary_emb(q, k)
         
         # Attention
-        # PyTorch SDPA prefers [B, H, L, D]
-        
-        # Mask handling is slightly complex for SDPA with different versions.
-        # If attn_mask is meant for bias-add (float) or bool mask.
         dropout_p = self.dropout.p if self.training else 0.0
-        
-        # Ensure masks are correct format
-        # src_key_padding_mask is [B, L], True where padding.
-        # attn_mask might be [L, L] or [B*num_heads, L, L].
-        # Is causal mask used? BERT doesn't use causal usually.
-        
-        # For simplicity, combine masks.
-        is_causal = False
-        
-        # SDPA handles key_padding_mask automatically in newer torch?
-        # Check signature: query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False.
-        # It does NOT take key_padding_mask separate. We must merge.
         
         combined_mask = attn_mask
         if key_padding_mask is not None:
-            # key_padding_mask: [B, S] (True=pad). Expand to [B, 1, 1, S]
             pad_mask = key_padding_mask.view(B, 1, 1, L).expand(-1, self.nhead, -1, -1)
-            # attn_mask usually [L, L] for seq mask.
-            # We need a full bias mask.
             if combined_mask is None:
                 combined_mask = torch.zeros((B, self.nhead, L, L), device=query.device, dtype=query.dtype)
                 combined_mask.masked_fill_(pad_mask, float("-inf"))
             else:
-                # Merge logic (assuming additive mask)
                 combined_mask = combined_mask + pad_mask.float() * -1e9
 
         out = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=combined_mask, dropout_p=dropout_p, is_causal=is_causal
+            q, k, v, attn_mask=combined_mask, dropout_p=dropout_p, is_causal=False
         )
         
         if return_attentions:
-             # Re-compute weights for viz if requested (SDPA doesn't return them)
-             # This is expensive but necessary for viz.
-             # Or we fallback to manual logic.
-             # Given 'viz' is a feature (AbProp introspect), we should probably support it.
-             # But F.sdpa is fast.
-             # Let's do standard computation if return_attentions is True.
              scale = self.head_dim ** -0.5
              attn_logits = (q @ k.transpose(-2, -1)) * scale
              if combined_mask is not None:
                  attn_logits = attn_logits + combined_mask
              attn_weights = F.softmax(attn_logits, dim=-1)
-             out = attn_weights @ v
         else:
              attn_weights = None
 
@@ -345,7 +233,7 @@ class SmallEncoder(nn.Module):
             for _ in range(config.num_layers)
         )
         self.dropout = nn.Dropout(config.dropout)
-        self.norm = _get_norm_fn(norm_type, config.d_model) # Final Norm for Pre-Norm architecture
+        self.norm = get_norm_fn(norm_type, config.d_model) # Final Norm
         self.apply(self._init_weights)
 
     @staticmethod
@@ -401,8 +289,6 @@ class MLMHead(nn.Module):
 
     def __init__(self, hidden_size: int, vocab_size: int, embedding_weight: nn.Parameter) -> None:
         super().__init__()
-        # Ensure we use LayerNorm for head anyway, or match norm_type? 
-        # Usually head has its own LayerNorm.
         self.layer_norm = nn.LayerNorm(hidden_size)
         self.decoder = nn.Linear(hidden_size, vocab_size, bias=False)
         self.decoder.weight = embedding_weight
@@ -455,11 +341,31 @@ class AbPropModel(nn.Module):
         super().__init__()
         self._mc_dropout_enabled = False
         self.config = config or TransformerConfig()
-        self.encoder = SmallEncoder(self.config)
+        
+        # Select Encoder Backend
+        if self.config.encoder_type == "mamba":
+            # Map TransformerConfig to MambaConfig
+            mamba_cfg = MambaConfig(
+                d_model=self.config.d_model,
+                n_layers=self.config.num_layers,
+                vocab_size=self.config.vocab_size,
+                dropout=self.config.dropout,
+                ssm_d_state=self.config.ssm_d_state,
+                ssm_d_conv=self.config.ssm_d_conv,
+                ssm_expand=self.config.ssm_expand,
+                ssm_dt_rank=self.config.ssm_dt_rank,
+                norm_type=self.config.norm_type
+            )
+            self.encoder = MambaEncoder(mamba_cfg)
+            embedding_weight = self.encoder.embedding.weight
+        else:
+            self.encoder = SmallEncoder(self.config)
+            embedding_weight = self.encoder.token_embedding.weight
+            
         self.mlm_head = MLMHead(
             hidden_size=self.config.d_model,
             vocab_size=self.config.vocab_size,
-            embedding_weight=self.encoder.token_embedding.weight,
+            embedding_weight=embedding_weight,
         )
         self.classifier = SeqClassifierHead(
             hidden_size=self.config.d_model,
@@ -493,6 +399,7 @@ class AbPropModel(nn.Module):
     ) -> Dict[str, object]:
         tasks = tuple(tasks or ("mlm", "cls", "reg"))
         attention_mask = attention_mask.bool()
+        
         encoder_output = self.encoder(
             input_ids,
             attention_mask,

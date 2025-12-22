@@ -257,7 +257,8 @@ def train_single_fold(
     if best_ckpt_path.exists() and rank == 0:
         checkpoint = torch.load(best_ckpt_path, map_location="cpu", weights_only=False)
         if "eval_metrics" in checkpoint:
-            metrics["best_" + k] = v for k, v in checkpoint["eval_metrics"].items()
+            for k, v in checkpoint["eval_metrics"].items():
+                metrics["best_" + k] = v
 
     return metrics
 

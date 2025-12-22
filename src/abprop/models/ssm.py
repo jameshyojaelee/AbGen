@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from abprop.models.transformer import RMSNorm  # Reuse existing components
+from abprop.models.layers import RMSNorm  # Reuse existing components
 
 
 @dataclass
