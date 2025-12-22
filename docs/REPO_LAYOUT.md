@@ -1,46 +1,36 @@
 # Repository Layout
 
 ## Inventory (Top-Level)
+- `src/abprop/` — package code (models, data, eval, train, server)
+- `scripts/` — CLIs (core) and `scripts/dev/` (smoke/bench)
+- `configs/` — YAML/JSON configs; `configs/legacy/` for deprecated
+- `docs/` — docs hub with subfolders and backward-compatible stubs at old paths
+- `tests/` — unit/integration tests
+- `data/` — raw/interim/processed (raw ignored by git)
+- `outputs/` — generated artifacts (benchmarks, checkpoints, logs)
 
-- `src/abprop/` — product code (models, data, eval, training, server)
-- `scripts/` — CLI entrypoints and workflows (core + dev helpers)
-- `configs/` — YAML/json configuration files
-- `docs/` — documentation, figures, and references
-- `data/` — datasets and provenance (raw/interim/processed)
-- `outputs/` — training/eval artifacts (generated)
-- `models/` — model registry + cards
-- `tests/` — unit and integration tests
-- `examples/` — small example inputs
-- `notebooks/` — exploratory notebooks
-- `benchmarks/`, `mlruns/`, `logs/` — experiment artifacts (generated)
+## Docs hub
+- `docs/README.md` — navigation
+- `docs/training/` — training/DPO quickstarts
+- `docs/design/` — methods + case studies
+- `docs/evaluation/` — results/leaderboard + guardrails
+- `docs/data/` — dataset pointers
+- `docs/reference/` — status, reproducibility, limitations
+- Stubs in `docs/*.md` keep old links working.
 
-## Target Structure
+## Scripts
+- Core: `scripts/train.py`, `scripts/eval.py`, `scripts/etl.py`, `scripts/run_benchmarks.py`, `scripts/run_guardrails.py`, `scripts/generate.py`, `scripts/train_dpo.py`.
+- Dev/smoke: `scripts/dev/verify_backbone.py`, `scripts/dev/verify_mamba.py`, `scripts/dev/bench_*`.
+- Wrappers at old paths forward to `scripts/dev/` counterparts for compatibility.
 
-```
-repo/
-├── src/abprop/               # product code
-├── scripts/                  # user-facing CLIs
-│   ├── dev/                  # smoke + ad-hoc benchmarks
-│   └── README.md             # script catalog
-├── configs/                  # runtime configs
-│   ├── legacy/               # deprecated configs
-│   └── README.md             # config catalog
-├── docs/                     # documentation hub
-│   ├── training/
-│   ├── design/
-│   ├── evaluation/
-│   ├── data/
-│   ├── reference/
-│   └── README.md             # navigation hub
-├── data/                     # datasets + provenance
-├── models/                   # registry + model cards
-├── outputs/                  # generated artifacts
-└── tests/
-```
+## Configs
+- `configs/train.yaml`, `configs/model.yaml`, `configs/data.yaml`
+- Benchmarks: `configs/benchmarks.yaml` (default), `configs/benchmarks_local.yaml` (local OAS paths)
+- Model variants: `configs/model_mamba.yaml`
+- Legacy: `configs/legacy/`
 
-## Conventions
-
-- **Docs** live under `docs/` subfolders. Old paths remain as stubs that point to new locations.
-- **Scripts** in `scripts/` are the canonical entrypoints; `scripts/dev/` holds smoke/bench helpers.
-- **Configs** under `configs/legacy/` are kept for reference but not used in the main workflows.
-- **Artifacts** (`outputs/`, `mlruns/`, `benchmarks/`, `logs/`) are generated and not sources of truth.
+## Generated artifacts
+- Benchmarks: `outputs/benchmarks*/summary.json`
+- Guardrails: `outputs/guardrails/*.json`
+- DPO: `outputs/dpo_guardrail/`
+- Design benchmark: `outputs/benchmarks/design/`
