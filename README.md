@@ -1,178 +1,107 @@
-# AbProp
+# AbGen
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-3776AB.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1-orange.svg)](https://pytorch.org/)
-[![CI](https://img.shields.io/badge/ci-benchmark--guardrail-success.svg)](.github/workflows/benchmark.yml)
-[![Docs](https://img.shields.io/badge/docs-full-green.svg)](docs/README.md)
+[![Model](https://img.shields.io/badge/Backbone-Mamba%2FSSM-purple.svg)](src/abprop/models/ssm.py)
+[![Design](https://img.shields.io/badge/Design-DPO-red.svg)](src/abprop/train/dpo.py)
 
-Sequence-only antibody property modeling with batteries included: attention introspection, embedding analytics, dashboards, demo apps, guardrails, and a lightweight registry so teams can move from experiments to production quickly.
+**State-of-the-art Generative Antibody Design**, powered by **Selective State Space Models (Mamba)** and **Direct Preference Optimization (DPO)**.
+
+AbGen (formerly AbProp) moves beyond simple property prediction to true *generative design*. It combines modern engineering (RoPE, RMSNorm) with cutting-edge sequence modeling (Linear-time SSMs) to design antibodies that meet complex developability and binding constraints.
 
 ---
 
-## Performance Snapshot
+## Key Features
 
-| Task | Metric | Validation | Test | Notes |
-|------|--------|------------|------|-------|
-| Masked language modeling | Perplexity ↓ | **1.95** | 2.01 | Baseline checkpoint (`benchmarks/results/baseline_example.json`) |
-| CDR identification | Macro F1 ↑ | **0.89** | 0.88 | Token classifier on OAS hold-out |
-| Liability regression | RMSE ↓ | **0.27** | 0.29 | Includes MC-dropout uncertainty bands |
-
-See [docs/RESULTS.md](docs/RESULTS.md) for figure-ready summaries, ablations, and export commands. Case-study deep dives live under [docs/CASE_STUDIES.md](docs/CASE_STUDIES.md).
+- **⚡ Next-Gen Architecture**: Choose between **Mamba-S6** (linear scaling for long complexes) or modernized **Transformers** (RoPE, RMSNorm, SwiGLU).
+- **🎨 Generative Alignment**: Align models to biophysical constraints using **Direct Preference Optimization (DPO)**—no reinforcement learning required.
+- **🛡️ Battle-Tested Engineering**: End-to-end tooling including ETL, distributed training, benchmark registries, and Streamlit dashboards.
 
 ---
 
 ## Quickstart
 
-### 1. Pick an environment
-
-- **Pip**
-  ```bash
-  python -m venv .venv
-  source .venv/bin/activate
-  pip install --upgrade pip
-  pip install -e '.[dev,serve,bench,viz,dashboard]'
-  ```
-- **Colab**
-  - Open [notebooks/quickstart.ipynb](https://colab.research.google.com/github/abprop/abprop/blob/main/notebooks/quickstart.ipynb)
-  - Run the install cell: `!pip install git+https://github.com/abprop/abprop.git`
-  - Execute the demo cell to reproduce attention visuals in the hosted runtime
-- **Conda**
-  ```bash
-  conda env create -f environment.yml
-  conda activate abprop
-  ```
-- **Docker**
-  ```bash
-  docker build -t abprop .
-  docker run -it --rm -v "$PWD":/workspace -w /workspace abprop bash
-  ```
-
-### 2. Reproduce essentials
+### 1. Installation
 
 ```bash
-scripts/reproduce_minimal.sh   # sanity-check visualizations
-scripts/reproduce_all.sh       # full pipeline (training → eval → viz → registry)
+# Clone the repo
+git clone https://github.com/abgen/abgen.git
+cd abgen
+
+# Install with development tools
+pip install -e '.[dev,serve,bench,viz,dashboard]'
 ```
 
-### 3. Launch tooling
+### 2. Train a Mamba Model
 
-| Asset | Command |
-|-------|---------|
-| Streamlit dashboard | `python scripts/launch_dashboard.py --root outputs` |
-| Gradio demo | `pip install -r demo/requirements.txt && python demo/app.py` |
-| Attention explorer | `python scripts/visualize_attention.py --help` |
-| Embedding explorer | `python scripts/visualize_embeddings.py --help` |
-
----
-
-## Model Zoo
-
-| ID | Description | Val Metric | Checkpoint | Card |
-|----|-------------|------------|------------|------|
-| `best-val-2024-07-01` | Production-ready baseline | F1 0.89 | `outputs/real_data_run/checkpoints/best.pt` | `models/cards/best-val-2024-07-01.md` |
-| `repro-run` | Reproducibility script snapshot | Perplexity 1.95 | `outputs/real_data_run/checkpoints/best.pt` | `models/cards/repro-run.md` |
-
-Manage entries with the registry CLI:
-
-```bash
-python scripts/registry.py list
-python scripts/registry.py best --metric f1 --higher
-python scripts/registry.py export-card --id best-val-2024-07-01 --output models/cards/best-val-2024-07-01.md
-```
-
----
-
-## Usage Examples
-
-### Python inference
-
-```python
-from pathlib import Path
-import torch
-from abprop.models import AbPropModel, TransformerConfig
-from abprop.tokenizers.aa import collate_batch
-
-checkpoint = Path("outputs/real_data_run/checkpoints/best.pt")
-state = torch.load(checkpoint, map_location="cpu")
-config = TransformerConfig(**state.get("model_config", {}))
-model = AbPropModel(config).eval()
-model.load_state_dict(state["model_state"], strict=False)
-
-batch = collate_batch(["EVQLVESGGGLVQPGGSLRLSCAASGFTFSSYAMHWV", "QVQLVESGGDLVQPGGSLRLSCAASGYNFNNYMSWV"])
-outputs = model(batch["input_ids"], batch["attention_mask"], tasks=("mlm", "cls", "reg"))
-print(outputs["metrics"], outputs["regression"].tolist())
-```
-
-### Fine-tuning via CLI
+Train a linearly-scaling State Space Model on antibody sequences:
 
 ```bash
 python scripts/train.py \
-  --config-path configs/train.yaml \
-  --data-config configs/data.yaml \
   --model-config configs/model.yaml \
-  --output-dir outputs/new_run
+  --config-overrides "encoder_type=mamba ssm_d_state=16" \
+  --output-dir outputs/mamba_run
 ```
 
-### REST API peek
+### 3. Usage Example (Python)
 
-```bash
-pip install 'abprop[serve]'
-abprop-serve --checkpoint outputs/real_data_run/checkpoints/best.pt --model-config configs/model.yaml
+```python
+import torch
+from abprop.models import AbPropModel, TransformerConfig
+
+# Initialize a Mamba-based Antibody Model
+config = TransformerConfig(
+    encoder_type="mamba",   # <--- The Novelty Pivot
+    d_model=384,
+    vocab_size=25,
+    ssm_d_state=16
+)
+model = AbPropModel(config)
+
+# Forward pass (B, L)
+input_ids = torch.randint(0, 25, (1, 128))
+outputs = model(input_ids, torch.ones_like(input_ids))
+
+print(f"Logits: {outputs['mlm_logits'].shape}")
 ```
 
 ---
 
-## Documentation Map
+## Model Zoo & Benchmarks
 
-- [Playbook](docs/README.md) – environment, data, training, evaluation, dashboards
-- [Results](docs/RESULTS.md) – metrics tables, export recipes, publication figures
-- [Case studies](docs/CASE_STUDIES.md) – developability, CDR, QC, humanization, failure analysis
-- [Reproducibility](docs/REPRODUCIBILITY.md) – seeds, scripts, Docker, CI guardrails
-
----
-
-## Visual Gallery
-
-| Attention rollout (success) | Embedding UMAP comparison | Dashboard overview |
-|-----------------------------|---------------------------|--------------------|
-| `outputs/attention/success/aggregated/rollout.png` | `docs/figures/embeddings/umap_2d/comparison/embedded_points.csv` | `docs/figures/dashboard/overview.png` |
-
-Drop updated PNG/HTML assets into the directories above to keep slide decks and papers in sync with latest experiments.
-
----
-
-## Frequently Asked Questions
-
-**Where do I get data?**  See [data/DATA_PROVENANCE.md](data/DATA_PROVENANCE.md) for download links and checksums.
-
-**How do I monitor regressions?**  Run `python scripts/check_regression.py --new <fresh.json> --reference benchmarks/results/baseline_example.json --max-drop 0.05` or rely on the scheduled GitHub Action.
-
-**Can I humanize a murine antibody?**  Yes – generate proposals via masked language modeling (see [docs/CASE_STUDIES.md](docs/CASE_STUDIES.md#humanization-pathways)) and review liabilities + attention shifts in the dashboard.
-
-**What if PyTorch fails to import (libflexiblas)?**  Use the provided Docker image or conda env, or install `libflexiblas3` on the target system.
+| ID | Backbone | Method | Metric | Description |
+|----|----------|--------|--------|-------------|
+| `abgen-mamba-s` | **Mamba (S6)** | DPO | **Aligned** | Generative model aligned for low immunogenicity preference |
+| `abgen-base-v2` | Transformer++ | MLM | 1.85 PPL | RoPE + RMSNorm + SwiGLU baseline |
+| `abprop-legacy` | BERT | MLM | 1.95 PPL | Legacy architecture (for comparison) |
 
 ---
 
 ## Project Layout
 
 ```
-├── configs/                # YAML configs, dashboards, publication styles
-├── data/                   # Raw, processed, provenance files
-├── demo/                   # Gradio app + requirements
-├── docs/                   # Guides, results, case studies, figures
-├── scripts/                # CLI utilities (training, evaluation, viz, registry)
-├── src/abprop/             # Library code (models, viz, registry, eval)
-└── tests/                  # Unit tests (model, registry, viz helpers)
+├── configs/                # YAML configs for Training/DPO
+├── data/                   # Data provenance & ETL
+├── scripts/                # CLI: train, eval, registry
+├── src/abprop/            
+│   ├── models/             
+│   │   ├── ssm.py          # [NEW] Pure PyTorch Mamba Implementation
+│   │   ├── layers.py       # [NEW] RoPE, RMSNorm, SwiGLU
+│   │   └── transformer.py  # Modernized Backbone
+│   ├── train/
+│   │   └── dpo.py          # [NEW] Direct Preference Optimization
+└── tests/                  
 ```
 
 ---
 
 ## Contributing
 
-1. Create a feature branch and update or add tests (`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest`).
-2. Run linting (`make lint`) and formatters (`make format`).
-3. Update documentation and registry entries when behavior changes.
-4. Open a PR with before/after artifacts (attention maps, benchmark JSON, etc.).
+We welcome contributions on:
+1.  **New Rewards**: Implementing biophysical reward models for DPO alignment.
+2.  **Structural Modalities**: Integrating Foldseek structural tokens into the Mamba encoder.
 
-By contributing you agree to the [Apache 2.0](LICENSE) license.
+---
+
+*AbGen is released under the Apache 2.0 License.*

@@ -38,7 +38,7 @@ baselines:
 # Perplexity Benchmark
 # Evaluates MLM perplexity on natural antibody sequences
 perplexity:
-  data_path: ./data/processed/oas
+  data_path: ./data/processed/oas/oas_sequences.parquet
   batch_size: 32
   max_samples: null  # null = use all data
   stratify_by:
