@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from abprop.models.layers import RMSNorm  # Reuse existing components
+from abprop.models.layers import get_norm_fn  # Reuse existing components
 
 
 @dataclass
@@ -76,7 +76,7 @@ class MambaBlock(nn.Module):
         self.out_proj = nn.Linear(self.d_inner, d_model, bias=bias)
         self.silu = nn.SiLU()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Args:
             x: shape (batch, seq_len, d_model)
@@ -96,7 +96,7 @@ class MambaBlock(nn.Module):
         x_branch = self.silu(x_branch)
         
         # 3. State Space Model
-        y_ssm = self.ssm(x_branch)
+        y_ssm = self.ssm(x_branch, attention_mask=attention_mask)
         
         # 4. Gating
         y = y_ssm * self.silu(res_branch)
@@ -104,13 +104,14 @@ class MambaBlock(nn.Module):
         # 5. Output Project
         return self.out_proj(y)
 
-    def ssm(self, u: torch.Tensor) -> torch.Tensor:
+    def ssm(self, u: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Runs the SSM.
         u: (B, L, ED)
         Returns: (B, L, ED)
         """
         batch, seq_len, dim = u.shape
+        mask = attention_mask.bool() if attention_mask is not None else None
         
         # Compute delta, B, C dependent on u
         # x_proj maps u to (dt, B, C)
@@ -171,7 +172,12 @@ class MambaBlock(nn.Module):
             u_i = u[:, i, :, None] # (B, D, 1)
             
             # h = dA * h + dB * u
-            h = h * dA + dB * u_i
+            new_h = h * dA + dB * u_i
+            if mask is not None:
+                step_mask = mask[:, i].view(batch, 1, 1)
+                h = torch.where(step_mask, new_h, h)
+            else:
+                h = new_h
             
             # y = C * h + D * u
             # C[i]: (B, S)
@@ -179,6 +185,8 @@ class MambaBlock(nn.Module):
             y_i = torch.sum(h * C_i, dim=-1) # (B, D)
             
             y_i = y_i + self.D * u[:, i]
+            if mask is not None:
+                y_i = y_i * mask[:, i].view(batch, 1).float()
             ys.append(y_i)
             
         y = torch.stack(ys, dim=1)
@@ -193,20 +201,25 @@ class MambaEncoder(nn.Module):
         self.config = config
         self.embedding = nn.Embedding(config.vocab_size, config.d_model)
         
-        self.layers = nn.ModuleList([
-            MambaBlock(
-                d_model=config.d_model,
-                d_state=config.ssm_d_state,
-                d_conv=config.ssm_d_conv,
-                expand=config.ssm_expand,
-                dt_rank=config.ssm_dt_rank,
-                conv_bias=config.ssm_conv_bias,
-                bias=config.ssm_bias
-            )
-            for _ in range(config.n_layers)
-        ])
-        
-        self.norm_f = RMSNorm(config.d_model)
+        self.layers = nn.ModuleList(
+            [
+                MambaBlock(
+                    d_model=config.d_model,
+                    d_state=config.ssm_d_state,
+                    d_conv=config.ssm_d_conv,
+                    expand=config.ssm_expand,
+                    dt_rank=config.ssm_dt_rank,
+                    conv_bias=config.ssm_conv_bias,
+                    bias=config.ssm_bias,
+                )
+                for _ in range(config.n_layers)
+            ]
+        )
+        self.layer_norms = nn.ModuleList(
+            [get_norm_fn(config.norm_type, config.d_model) for _ in range(config.n_layers)]
+        )
+        self.dropouts = nn.ModuleList([nn.Dropout(config.dropout) for _ in range(config.n_layers)])
+        self.final_norm = get_norm_fn(config.norm_type, config.d_model)
 
     def forward(
         self,
@@ -216,21 +229,25 @@ class MambaEncoder(nn.Module):
     ) -> torch.Tensor | Tuple[torch.Tensor, None]:
         
         x = self.embedding(input_ids)
-        
-        # Mamba doesn't strictly need attention_mask for padding in the Conv/SSM 
-        # in the same way Attn does (it just processes pad tokens as state updates).
-        # But for correctness, we should mask the input x or output?
-        # Usually we just let it run.
-        
-        for layer in self.layers:
+
+        mask = attention_mask.bool() if attention_mask is not None else None
+        if mask is not None:
+            x = x * mask.unsqueeze(-1).float()
+
+        for layer, norm, dropout in zip(self.layers, self.layer_norms, self.dropouts):
             # Pre-Norm residual connection
             # Mamba architecture: x = x + Block(Norm(x))
             residual = x
-            x = self.norm_f(x)
-            x = layer(x)
+            x = norm(x)
+            x = layer(x, attention_mask=attention_mask)
+            x = dropout(x)
             x = residual + x
-            
-        x = self.norm_f(x) # Final norm
+            if mask is not None:
+                x = x * mask.unsqueeze(-1).float()
+
+        x = self.final_norm(x)  # Final norm
+        if mask is not None:
+            x = x * mask.unsqueeze(-1).float()
         
         if return_attentions:
             return x, None

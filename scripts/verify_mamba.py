@@ -1,5 +1,6 @@
 import torch
 from abprop.models.transformer import AbPropModel, TransformerConfig
+from abprop.tokenizers import TOKEN_TO_ID, apply_mlm_mask
 
 def test_mamba_pass():
     print("Initializing model with MAMBA config...")
@@ -25,10 +26,19 @@ def test_mamba_pass():
     
     # Test Backward pass
     print("Testing backward pass...")
-    mlm_labels = input_ids.clone()
-    outputs_with_loss = model(input_ids, attention_mask, mlm_labels=mlm_labels)
+    masked_input_ids, mlm_labels = apply_mlm_mask(
+        input_ids,
+        attention_mask,
+        mlm_probability=0.2,
+    )
+    if (mlm_labels != -100).sum() == 0:
+        mlm_labels[0, 1] = input_ids[0, 1]
+        masked_input_ids[0, 1] = TOKEN_TO_ID["<mask>"]
+    outputs_with_loss = model(masked_input_ids, attention_mask, mlm_labels=mlm_labels)
     loss = outputs_with_loss['loss']
     print(f"Loss: {loss.item()}")
+    assert torch.isfinite(loss).item()
+    assert loss.item() > 0.0
     loss.backward()
     print("Backward pass with loss successful!")
 
