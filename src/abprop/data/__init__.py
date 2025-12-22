@@ -17,6 +17,7 @@ from .cross_validation import (
 )
 from .dataset import BucketBatchSampler, OASDataset, build_collate_fn
 from .etl import ETLConfig, run_etl
+from .preferences import PreferenceDataset, PreferenceExample, collate_preference_batch, load_preference_jsonl
 from .schema import validate_parquet_dataset
 
 @dataclass
@@ -47,6 +48,10 @@ __all__ = [
     "OASDataset",
     "BucketBatchSampler",
     "build_collate_fn",
+    "PreferenceExample",
+    "PreferenceDataset",
+    "load_preference_jsonl",
+    "collate_preference_batch",
     "ClonotypeAwareKFold",
     "CVFold",
     "GroupKFoldDataset",

@@ -101,13 +101,14 @@ def sample_mlm_edit(
 
     special_ids = {TOKEN_TO_ID[token] for token in SPECIAL_TOKENS}
     mask_id = TOKEN_TO_ID["<mask>"]
+    special_tensor = torch.tensor(list(special_ids), device=device)
 
     ids = input_ids.clone()
     attn = attention_mask.bool()
 
     with torch.no_grad():
         for _ in range(steps):
-            candidate_mask = attn & ~torch.isin(ids, torch.tensor(list(special_ids), device=device))
+            candidate_mask = attn & ~torch.isin(ids, special_tensor)
             rand = torch.rand(ids.shape, device=device, generator=generator)
             mask_positions = (rand < mask_rate) & candidate_mask
 
