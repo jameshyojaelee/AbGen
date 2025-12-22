@@ -16,12 +16,15 @@ from abprop.models import AbPropModel, TransformerConfig
 from abprop.train import LoopConfig, TrainLoop
 from abprop.utils import (
     DEFAULT_OUTPUT_DIR,
+    ConfigOverrideError,
     FSDPConfig,
+    apply_config_overrides,
     barrier,
     cleanup,
     enable_activation_checkpointing,
     init_distributed,
     load_yaml_config,
+    parse_config_overrides,
     seed_all,
     wrap_ddp,
     wrap_fsdp_model,
@@ -42,6 +45,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--grad_ckpt", choices=["true", "false"], default="false")
     parser.add_argument("--distributed", choices=["none", "ddp"], default="none")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--config-overrides",
+        type=str,
+        default="",
+        help="Space-separated key=value overrides for the config (e.g. encoder_type=mamba).",
+    )
+    parser.add_argument(
+        "--allow-unknown-overrides",
+        action="store_true",
+        help="Allow config overrides to introduce new keys.",
+    )
     return parser
 
 
@@ -60,6 +74,14 @@ def instantiate_model(model_cfg: dict) -> tuple[AbPropModel, TransformerConfig]:
         mlm_weight=task_weights.get("mlm", defaults.mlm_weight),
         cls_weight=task_weights.get("cls", defaults.cls_weight),
         reg_weight=task_weights.get("reg", defaults.reg_weight),
+        encoder_type=model_cfg.get("encoder_type", defaults.encoder_type),
+        use_rope=model_cfg.get("use_rope", defaults.use_rope),
+        norm_type=model_cfg.get("norm_type", defaults.norm_type),
+        activation=model_cfg.get("activation", defaults.activation),
+        ssm_d_state=model_cfg.get("ssm_d_state", defaults.ssm_d_state),
+        ssm_d_conv=model_cfg.get("ssm_d_conv", defaults.ssm_d_conv),
+        ssm_expand=model_cfg.get("ssm_expand", defaults.ssm_expand),
+        ssm_dt_rank=model_cfg.get("ssm_dt_rank", defaults.ssm_dt_rank),
     )
     return AbPropModel(config), config
 
@@ -251,6 +273,17 @@ def main(argv: list[str] | None = None) -> None:
     train_cfg = load_yaml_config(args.config_path)
     model_cfg = load_yaml_config(args.model_config)
     data_cfg = load_yaml_config(args.data_config)
+    overrides = parse_config_overrides(args.config_overrides)
+    if overrides:
+        try:
+            apply_config_overrides(
+                {"model": model_cfg, "train": train_cfg, "data": data_cfg},
+                overrides,
+                allow_unknown=args.allow_unknown_overrides,
+                default_namespace="model",
+            )
+        except ConfigOverrideError as exc:
+            parser.error(str(exc))
 
     dist_info = init_distributed(args.distributed)
     rank = dist_info["rank"]
@@ -383,6 +416,11 @@ def main(argv: list[str] | None = None) -> None:
         if isinstance(tags, dict):
             mlflow_tags = {str(k): v for k, v in tags.items()}
 
+    checkpoint_metadata = {
+        "model_config": dict(model_config.__dict__),
+        "config_overrides": args.config_overrides or "",
+    }
+
     train_loop = TrainLoop(
         model,
         loop_config,
@@ -390,8 +428,16 @@ def main(argv: list[str] | None = None) -> None:
         device=device,
         is_rank_zero_run=(rank == 0),
         mlflow_tags=mlflow_tags,
+        checkpoint_metadata=checkpoint_metadata,
     )
-    train_loop.save_run_metadata({"train": train_cfg, "model": model_cfg, "data": data_cfg})
+    train_loop.save_run_metadata(
+        {
+            "train": train_cfg,
+            "model": model_cfg,
+            "data": data_cfg,
+            "config_overrides": args.config_overrides or "",
+        }
+    )
     train_loop.fit(train_loader, eval_loader)
 
     if synthetic_mode and train_loop.train_history:

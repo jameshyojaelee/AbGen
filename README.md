@@ -43,7 +43,18 @@ python scripts/train.py \
   --output-dir outputs/mamba_run
 ```
 
-### 3. Usage Example (Python)
+### 3. Train a Transformer Model
+
+Train the modernized Transformer backbone:
+
+```bash
+python scripts/train.py \
+  --model-config configs/model.yaml \
+  --config-overrides "encoder_type=transformer nhead=8 dim_feedforward=2048" \
+  --output-dir outputs/transformer_run
+```
+
+### 4. Usage Example (Python)
 
 ```python
 import torch

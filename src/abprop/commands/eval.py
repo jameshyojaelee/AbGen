@@ -27,12 +27,16 @@ from abprop.eval.uncertainty import (
 )
 from abprop.models import AbPropModel, TransformerConfig
 from abprop.utils import (
+    ConfigOverrideError,
+    apply_config_overrides,
+    extract_model_config,
     load_yaml_config,
     mlflow_default_tags,
     mlflow_log_artifact,
     mlflow_log_dict,
     mlflow_log_metrics,
     mlflow_run,
+    parse_config_overrides,
     seed_all,
 )
 
@@ -73,6 +77,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=50,
         help="Maximum LBFGS iterations for temperature calibration.",
     )
+    parser.add_argument(
+        "--config-overrides",
+        type=str,
+        default="",
+        help="Space-separated key=value overrides for the config (e.g. encoder_type=mamba).",
+    )
+    parser.add_argument(
+        "--allow-unknown-overrides",
+        action="store_true",
+        help="Allow config overrides to introduce new keys.",
+    )
     return parser
 
 
@@ -91,14 +106,29 @@ def instantiate_model(model_cfg: Dict) -> Tuple[AbPropModel, TransformerConfig]:
         mlm_weight=task_weights.get("mlm", defaults.mlm_weight),
         cls_weight=task_weights.get("cls", defaults.cls_weight),
         reg_weight=task_weights.get("reg", defaults.reg_weight),
+        encoder_type=model_cfg.get("encoder_type", defaults.encoder_type),
+        use_rope=model_cfg.get("use_rope", defaults.use_rope),
+        norm_type=model_cfg.get("norm_type", defaults.norm_type),
+        activation=model_cfg.get("activation", defaults.activation),
+        ssm_d_state=model_cfg.get("ssm_d_state", defaults.ssm_d_state),
+        ssm_d_conv=model_cfg.get("ssm_d_conv", defaults.ssm_d_conv),
+        ssm_expand=model_cfg.get("ssm_expand", defaults.ssm_expand),
+        ssm_dt_rank=model_cfg.get("ssm_dt_rank", defaults.ssm_dt_rank),
     )
     return AbPropModel(config), config
 
 
-def load_checkpoint(model: AbPropModel, checkpoint_path: Path, device: torch.device) -> None:
-    state = torch.load(checkpoint_path, map_location=device)
+def load_checkpoint(
+    model: AbPropModel,
+    checkpoint_path: Path,
+    device: torch.device,
+    *,
+    state: Optional[Dict[str, object]] = None,
+) -> Dict[str, object]:
+    state = state or torch.load(checkpoint_path, map_location=device)
     model_state = state.get("model_state", state)
     model.load_state_dict(model_state, strict=False)
+    return state
 
 
 def build_dataloader(
@@ -470,10 +500,27 @@ def main(argv: list[str] | None = None) -> None:
     model_cfg = load_yaml_config(args.model_config)
     data_cfg = load_yaml_config(args.data_config)
 
+    checkpoint_state = torch.load(args.checkpoint, map_location="cpu")
+    checkpoint_cfg = extract_model_config(checkpoint_state)
+    if checkpoint_cfg:
+        model_cfg.update(checkpoint_cfg)
+
+    overrides = parse_config_overrides(args.config_overrides)
+    if overrides:
+        try:
+            apply_config_overrides(
+                {"model": model_cfg, "data": data_cfg},
+                overrides,
+                allow_unknown=args.allow_unknown_overrides,
+                default_namespace="model",
+            )
+        except ConfigOverrideError as exc:
+            parser.error(str(exc))
+
     model, model_config = instantiate_model(model_cfg)
     device = torch.device(args.device)
     model.to(device)
-    load_checkpoint(model, args.checkpoint, device)
+    load_checkpoint(model, args.checkpoint, device, state=checkpoint_state)
 
     ensemble_models: List[AbPropModel] = []
     if args.ensemble_checkpoints:

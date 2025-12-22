@@ -182,6 +182,7 @@ class TrainLoop:
         log_run_name: str = "abprop",
         is_rank_zero_run: bool = True,
         mlflow_tags: Optional[Mapping[str, object]] = None,
+        checkpoint_metadata: Optional[Mapping[str, object]] = None,
     ) -> None:
         self.model = model
         self.config = config
@@ -219,6 +220,7 @@ class TrainLoop:
         self.best_metric: Optional[float] = None
         self.best_checkpoint_path = self.checkpoint_dir / "best.pt"
         self.last_checkpoint_path = self.checkpoint_dir / "last.pt"
+        self.checkpoint_metadata: Dict[str, object] = dict(checkpoint_metadata or {})
 
     def _init_fsdp_metadata(self) -> None:
         self._is_fsdp = False
@@ -331,6 +333,8 @@ class TrainLoop:
                 "scaler_state": self.scaler.state_dict(),
                 "step": step,
             }
+            if self.checkpoint_metadata:
+                state.update(self.checkpoint_metadata)
             if extra:
                 state.update(extra)
             torch.save(state, path)
@@ -346,6 +350,8 @@ class TrainLoop:
             "scaler_state": self.scaler.state_dict(),
             "step": step,
         }
+        if self.checkpoint_metadata:
+            state.update(self.checkpoint_metadata)
         if extra:
             state.update(extra)
         torch.save(state, path)

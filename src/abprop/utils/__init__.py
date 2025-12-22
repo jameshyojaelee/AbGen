@@ -28,6 +28,8 @@ from .mlflowx import (
     mlflow_run,
 )
 from .liabilities import CANONICAL_LIABILITY_KEYS, find_motifs, normalize_by_length
+from .checkpoints import extract_model_config
+from .overrides import apply_config_overrides, parse_config_overrides, ConfigOverrideError
 
 
 DEFAULT_DATA_DIR = Path("data")
@@ -44,6 +46,10 @@ __all__ = [
     "DEFAULT_DATA_DIR",
     "DEFAULT_OUTPUT_DIR",
     "load_yaml_config",
+    "extract_model_config",
+    "apply_config_overrides",
+    "parse_config_overrides",
+    "ConfigOverrideError",
     "CANONICAL_LIABILITY_KEYS",
     "find_motifs",
     "normalize_by_length",
