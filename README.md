@@ -13,9 +13,9 @@ AbGen moves beyond simple property prediction to true *generative design*. It co
 ---
 ## Key Features
 
-- **⚡ Next-Gen Architecture**: Choose between **Mamba-S6** (linear scaling for long complexes) or modernized **Transformers** (RoPE, RMSNorm, SwiGLU).
-- **🎨 Generative Alignment**: Align models to biophysical constraints using **Direct Preference Optimization (DPO)**—no reinforcement learning required.
-- **🛡️ Battle-Tested Engineering**: End-to-end tooling including ETL, distributed training, benchmark registries, and Streamlit dashboards.
+- **Next-Gen Architecture**: Choose between **Mamba-S6** (linear scaling for long complexes) or modernized **Transformers** (RoPE, RMSNorm, SwiGLU).
+- **Generative Alignment**: Align models to biophysical constraints using **Direct Preference Optimization (DPO)**—no reinforcement learning required.
+- **Battle-Tested Engineering**: End-to-end tooling including ETL, distributed training, benchmark registries, and Streamlit dashboards.
 
 ---
 
