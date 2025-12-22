@@ -1,0 +1,6 @@
+# CI fixture dataset configuration
+processed_dir: ./tests/fixtures
+length_bins: [16, 32, 64]
+parquet:
+  output_dir: ""  # use processed_dir directly
+  filename: oas_fixture.csv

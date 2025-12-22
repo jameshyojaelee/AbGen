@@ -1,0 +1,13 @@
+sequence,chain,liability_ln,length,split,species,germline_v,germline_j,cdr_mask
+ACDEFGHIKLMNPQ,H,"{""nglyc"":0.0,""deamidation"":0.0,""isomerization"":0.0,""oxidation"":0.05,""free_cysteines"":0.0}",14,train,human,IGHV1,IGHJ1,"[0,0,0,0,1,1,1,0,0,0,0,0,0,0]"
+CASSIRSSYEQYF,L,"{""nglyc"":0.0,""deamidation"":0.02,""isomerization"":0.0,""oxidation"":0.0,""free_cysteines"":0.0}",12,train,mouse,IGKV1,IGKJ1,"[0,0,0,1,1,1,1,0,0,0,0,0]"
+QVQLVQSGAEVVKPGASVKVSCKAS,H,"{""nglyc"":0.01,""deamidation"":0.0,""isomerization"":0.0,""oxidation"":0.0,""free_cysteines"":0.0}",24,train,human,IGHV2,IGHJ2,"[0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0]"
+EVQLVESGGGLVQPGGSLRLSCAASG,H,"{""nglyc"":0.0,""deamidation"":0.0,""isomerization"":0.0,""oxidation"":0.02,""free_cysteines"":0.0}",25,train,human,IGHV3,IGHJ3,"[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0]"
+DIQMTQSPSSLSASVGDRVTITCRAS,L,"{""nglyc"":0.0,""deamidation"":0.0,""isomerization"":0.01,""oxidation"":0.0,""free_cysteines"":0.0}",25,train,mouse,IGKV2,IGKJ2,"[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0]"
+VQLQQSGAELVRPGASVKLSCKASGYT,H,"{""nglyc"":0.0,""deamidation"":0.0,""isomerization"":0.0,""oxidation"":0.0,""free_cysteines"":0.0}",28,train,human,IGHV4,IGHJ4,"[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0]"
+ACDEFGHIKLMNPQRSTVWY,H,"{""nglyc"":0.0,""deamidation"":0.0,""isomerization"":0.0,""oxidation"":0.0,""free_cysteines"":0.0}",20,val,human,IGHV1,IGHJ1,"[0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0]"
+CARDRSTTTYYFDYW,L,"{""nglyc"":0.0,""deamidation"":0.0,""isomerization"":0.0,""oxidation"":0.03,""free_cysteines"":0.0}",15,val,mouse,IGKV1,IGKJ1,"[0,0,0,1,1,1,1,1,0,0,0,0,0,0,0]"
+QVQLVQSGAEVVRPGASVKVS,H,"{""nglyc"":0.0,""deamidation"":0.01,""isomerization"":0.0,""oxidation"":0.0,""free_cysteines"":0.0}",20,val,human,IGHV2,IGHJ2,"[0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0]"
+ACDGSTWQX,H,"{""nglyc"":0.0,""deamidation"":0.0,""isomerization"":0.0,""oxidation"":0.0,""free_cysteines"":0.0}",9,test,human,IGHV5,IGHJ5,"[0,0,0,1,1,1,0,0,0]"
+CASSLGQGAE,L,"{""nglyc"":0.0,""deamidation"":0.0,""isomerization"":0.0,""oxidation"":0.0,""free_cysteines"":0.0}",9,test,mouse,IGKV3,IGKJ3,"[0,0,0,1,1,1,0,0,0]"
+EVQLVESGGGLVQPGGSLRLS,H,"{""nglyc"":0.02,""deamidation"":0.0,""isomerization"":0.0,""oxidation"":0.01,""free_cysteines"":0.0}",20,test,human,IGHV3,IGHJ3,"[0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0]"

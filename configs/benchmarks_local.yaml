@@ -1,6 +1,0 @@
-perplexity:
-  data_path: ./data/processed/oas_real_full
-cdr_classification:
-  data_path: ./data/processed/oas_real_full
-liability:
-  data_path: ./data/processed/oas_real_full

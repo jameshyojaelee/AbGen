@@ -17,7 +17,7 @@ baselines:
       tasks: ["mlm", "cls", "reg"]
       sequence_pooling: mean
     training:
-      data_path: ./data/processed/oas
+      data_path: ./data/processed/oas_real_full
       train_split: train
       val_split: val
       batch_size: 16
@@ -38,7 +38,7 @@ baselines:
 # Perplexity Benchmark
 # Evaluates MLM perplexity on natural antibody sequences
 perplexity:
-  data_path: ./data/processed/oas/oas_sequences.parquet
+  data_path: ./data/processed/oas_real_full
   batch_size: 32
   max_samples: null  # null = use all data
   stratify_by:
@@ -50,7 +50,7 @@ perplexity:
 # CDR Classification Benchmark
 # Token-level CDR region prediction
 cdr_classification:
-  data_path: ./data/processed/oas
+  data_path: ./data/processed/oas_real_full
   batch_size: 32
   max_samples: null
   cdr_schemes:
@@ -62,7 +62,7 @@ cdr_classification:
 # Liability Benchmark
 # Regression metrics for antibody liabilities
 liability:
-  data_path: ./data/processed/oas
+  data_path: ./data/processed/oas_real_full
   batch_size: 32
   max_samples: null
   liability_features:

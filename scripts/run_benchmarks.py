@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -21,7 +23,14 @@ import torch
 from abprop.benchmarks import get_registry
 from abprop.benchmarks.registry import BenchmarkConfig, BenchmarkResult
 from abprop.models import AbPropModel, TransformerConfig
-from abprop.utils import load_yaml_config, mlflow_default_tags, mlflow_log_artifact, mlflow_log_metrics, mlflow_run
+from abprop.utils import (
+    extract_model_config,
+    load_yaml_config,
+    mlflow_default_tags,
+    mlflow_log_artifact,
+    mlflow_log_metrics,
+    mlflow_run,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -97,6 +106,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Generate HTML report",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit with non-zero status if any requested benchmark fails or produces invalid metrics.",
+    )
     return parser
 
 
@@ -111,6 +125,11 @@ def instantiate_model(model_cfg: Dict, checkpoint_path: Path, device: str) -> Ab
     Returns:
         Loaded AbProp model
     """
+    state = torch.load(checkpoint_path, map_location=device)
+    checkpoint_cfg = extract_model_config(state)
+    if checkpoint_cfg:
+        model_cfg = {**model_cfg, **checkpoint_cfg}
+
     # Build model config
     defaults = TransformerConfig()
     task_weights = model_cfg.get("task_weights", {})
@@ -140,7 +159,6 @@ def instantiate_model(model_cfg: Dict, checkpoint_path: Path, device: str) -> Ab
     model = AbPropModel(config)
 
     # Load checkpoint
-    state = torch.load(checkpoint_path, map_location=device)
     model_state = state.get("model_state", state)
     model.load_state_dict(model_state, strict=False)
 
@@ -343,6 +361,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # Run benchmarks
     results: Dict[str, BenchmarkResult] = {}
+    failures: Dict[str, str] = {}
 
     if args.parallel and len(benchmarks_to_run) > 1:
         print("\nRunning benchmarks in parallel...")
@@ -365,7 +384,9 @@ def main(argv: list[str] | None = None) -> None:
                     result = future.result()
                     results[benchmark_name] = result
                 except Exception as exc:
-                    print(f"Benchmark {benchmark_name} failed: {exc}")
+                    msg = f"{type(exc).__name__}: {exc}"
+                    failures[benchmark_name] = msg
+                    print(f"Benchmark {benchmark_name} failed: {msg}")
     else:
         # Sequential execution
         for benchmark_name in benchmarks_to_run:
@@ -377,7 +398,9 @@ def main(argv: list[str] | None = None) -> None:
                 )
                 results[benchmark_name] = result
             except Exception as exc:
-                print(f"Benchmark {benchmark_name} failed: {exc}")
+                msg = f"{type(exc).__name__}: {exc}"
+                failures[benchmark_name] = msg
+                print(f"Benchmark {benchmark_name} failed: {msg}")
                 import traceback
                 traceback.print_exc()
 
@@ -397,6 +420,51 @@ def main(argv: list[str] | None = None) -> None:
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
     print(f"\nSummary saved to: {summary_path}")
+
+    regression_path = args.output_dir / "regression.json"
+    def _valid_number(value: object) -> bool:
+        return isinstance(value, (int, float)) and math.isfinite(float(value))
+
+    regression = {
+        "commit": "local",
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "benchmarks": {},
+    }
+    missing_regression: List[str] = []
+    if "perplexity" in summary and isinstance(summary["perplexity"], dict):
+        value = summary["perplexity"].get("overall_perplexity")
+        if _valid_number(value):
+            regression["benchmarks"]["perplexity"] = {
+                "metric": "overall_perplexity",
+                "value": float(value),
+                "higher_is_better": False,
+            }
+        else:
+            missing_regression.append("perplexity")
+    if "cdr_classification" in summary and isinstance(summary["cdr_classification"], dict):
+        value = summary["cdr_classification"].get("f1")
+        if _valid_number(value):
+            regression["benchmarks"]["cdr_classification"] = {
+                "metric": "f1",
+                "value": float(value),
+                "higher_is_better": True,
+            }
+        else:
+            missing_regression.append("cdr_classification")
+    if "liability" in summary and isinstance(summary["liability"], dict):
+        mse = summary["liability"].get("overall_mse")
+        rmse = math.sqrt(float(mse)) if _valid_number(mse) and float(mse) >= 0 else None
+        if rmse is not None and _valid_number(rmse):
+            regression["benchmarks"]["liability_regression"] = {
+                "metric": "rmse",
+                "value": float(rmse),
+                "higher_is_better": False,
+            }
+        else:
+            missing_regression.append("liability_regression")
+    with open(regression_path, "w", encoding="utf-8") as f:
+        json.dump(regression, f, indent=2)
+    print(f"Regression JSON saved to: {regression_path}")
 
     # Generate HTML report
     if args.html_report:
@@ -424,7 +492,22 @@ def main(argv: list[str] | None = None) -> None:
             if args.html_report and html_path.exists():
                 mlflow_log_artifact(html_path, artifact_path="benchmarks")
 
-    print("\n✓ All benchmarks completed successfully!")
+    if failures:
+        print("\nSome benchmarks failed:")
+        for name, msg in sorted(failures.items()):
+            print(f"  - {name}: {msg}")
+
+    if args.strict and (failures or missing_regression):
+        if missing_regression:
+            print("\nMissing/invalid regression metrics:")
+            for item in missing_regression:
+                print(f"  - {item}")
+        sys.exit(1)
+
+    if failures:
+        print("\n✓ Benchmarks completed with failures (see above).")
+    else:
+        print("\n✓ All benchmarks completed successfully!")
 
 
 if __name__ == "__main__":

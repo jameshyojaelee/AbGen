@@ -24,6 +24,7 @@ data/interim/
 data/processed/
 outputs/
 mlruns/
+logs/
 
 # IDE / OS specifics
 .idea/

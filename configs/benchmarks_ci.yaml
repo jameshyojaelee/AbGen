@@ -1,0 +1,7 @@
+# Minimal benchmark config for CI (uses fixture CSV)
+perplexity:
+  data_path: ./tests/fixtures/oas_fixture.csv
+cdr_classification:
+  data_path: ./tests/fixtures/oas_fixture.csv
+liability:
+  data_path: ./tests/fixtures/oas_fixture.csv

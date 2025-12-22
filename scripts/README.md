@@ -26,5 +26,3 @@
 - `scripts/dev/bench_dataloader.py` — dataloader micro-benchmark
 - `scripts/dev/bench_train.py` — training micro-benchmark
 - `scripts/dev/bench_mamba.py` — Mamba vs transformer runtime benchmark
-
-Legacy wrappers remain at the old paths for compatibility (e.g., `scripts/verify_mamba.py`).

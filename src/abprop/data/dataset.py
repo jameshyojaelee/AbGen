@@ -71,10 +71,14 @@ class OASDataset(Dataset):
         self.split = split
         available_columns: set[str] = set()
         if pa_dataset is not None:
-            try:
-                available_columns = set(pa_dataset.dataset(str(self.parquet_dir)).schema.names)
-            except FileNotFoundError:
-                pass
+            # Only attempt Parquet schema introspection for directories or Parquet files.
+            # Fixture/CI datasets may be CSV/JSON and should not fail here.
+            suffix = self.parquet_dir.suffix.lower()
+            if self.parquet_dir.is_dir() or suffix in {".parquet"}:
+                try:
+                    available_columns = set(pa_dataset.dataset(str(self.parquet_dir)).schema.names)
+                except Exception:
+                    available_columns = set()
 
         default_columns = {"sequence", "chain", "liability_ln", "length"}
         metadata_columns = {"species", "germline_v", "germline_j", "cdr_mask"}

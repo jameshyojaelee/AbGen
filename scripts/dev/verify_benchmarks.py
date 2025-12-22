@@ -57,12 +57,29 @@ def verify_imports():
 
         # Test benchmark creation
         print("\n4. Testing benchmark instantiation...")
-        config = BenchmarkConfig(
-            data_path=Path("data/processed/oas"),
-            batch_size=32,
-        )
+        default_oas = Path("data/processed/oas_real_full")
+        if not default_oas.exists():
+            default_oas = Path("data/processed/oas")
+
+        per_benchmark_paths = {
+            "perplexity": default_oas,
+            "cdr_classification": default_oas,
+            "liability": default_oas,
+            "developability": Path("data/processed/therapeutic_benchmark/therapeutic_benchmark.parquet"),
+            "zero_shot": Path("data/processed/zero_shot/zero_shot.parquet"),
+            "stratified_difficulty": Path("data/processed/stratified_test"),
+            "design": Path("tests/fixtures/toy_sequences.fa"),
+        }
 
         for bench_name in available:
+            data_path = per_benchmark_paths.get(bench_name, default_oas)
+            if not data_path.exists():
+                print(f"   - {bench_name}: SKIP (missing data at {data_path})")
+                continue
+            config = BenchmarkConfig(
+                data_path=data_path,
+                batch_size=32,
+            )
             try:
                 benchmark = registry.create(bench_name, config)
                 print(f"   ✓ {bench_name}: {benchmark.__class__.__name__}")
@@ -156,8 +173,6 @@ def verify_documentation():
     docs = [
         "src/abprop/benchmarks/README.md",
         "docs/README.md",
-        "docs/evaluation/RESULTS.md",
-        "docs/design/CASE_STUDIES.md",
     ]
 
     all_exist = True

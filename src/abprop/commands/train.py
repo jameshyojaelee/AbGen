@@ -170,12 +170,14 @@ def build_oas_dataloaders(
         )
 
     parquet_filename = parquet_cfg.get("filename")
-    dataset_source = dataset_root / parquet_filename if parquet_filename else dataset_root
-    if not dataset_source.exists():
-        raise FileNotFoundError(
-            f"Processed dataset not found at {dataset_source}. "
-            "Ensure the parquet filename in `configs/data.yaml` matches the export."
-        )
+    dataset_source = dataset_root
+    if parquet_filename:
+        candidate = dataset_root / parquet_filename
+        if candidate.exists():
+            dataset_source = candidate
+        else:
+            # Many exports are partitioned directories; fall back to the directory if present.
+            dataset_source = dataset_root
 
     train_dataset = OASDataset(dataset_source, split="train")
     if 0.0 < train_fraction < 1.0:
