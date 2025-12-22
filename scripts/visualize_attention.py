@@ -14,7 +14,7 @@ import torch
 
 from abprop.models import AbPropModel, TransformerConfig
 from abprop.tokenizers.aa import ID_TO_TOKEN, collate_batch
-from abprop.utils import load_yaml_config
+from abprop.utils import extract_model_config, load_yaml_config
 from abprop.viz.attention import (
     AttentionCache,
     attention_rollout,
@@ -107,15 +107,16 @@ def build_model(checkpoint_path: Path, model_config_path: Optional[Path], device
     cfg: Dict[str, object] = {}
     if model_config_path is not None:
         cfg = load_yaml_config(model_config_path)
+    if isinstance(cfg, dict) and isinstance(cfg.get("model"), dict):
+        cfg = cfg["model"]
 
-    config_data: Dict[str, object] = {}
-    for key in ("model_config", "config", "transformer_config"):
-        maybe_cfg = state.get(key)
-        if isinstance(maybe_cfg, dict):
-            config_data = maybe_cfg
-            break
-    if not config_data and cfg:
-        config_data = cfg.get("model", cfg) if isinstance(cfg, dict) else {}
+    checkpoint_cfg = extract_model_config(state)
+    if checkpoint_cfg and cfg:
+        config_data = {**checkpoint_cfg, **cfg}
+    elif checkpoint_cfg:
+        config_data = checkpoint_cfg
+    else:
+        config_data = cfg
 
     transformer_cfg = TransformerConfig(**config_data) if config_data else TransformerConfig()
 

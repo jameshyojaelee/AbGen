@@ -7,12 +7,16 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from fastapi import FastAPI, HTTPException
+try:  # Optional dependency for serving.
+    from fastapi import FastAPI, HTTPException
+except ImportError:  # pragma: no cover - exercised in non-serve installs
+    FastAPI = None  # type: ignore[assignment]
+    HTTPException = None  # type: ignore[assignment]
 
-from abprop.data import build_collate_fn
-from abprop.eval.uncertainty import sequence_perplexity_from_logits
+from abprop.eval.perplexity import mlm_perplexity_from_logits
 from abprop.models import AbPropModel, TransformerConfig
-from abprop.utils import load_yaml_config
+from abprop.tokenizers import apply_mlm_mask, batch_encode
+from abprop.utils import extract_model_config, load_yaml_config
 
 
 class ModelWrapper:
@@ -27,6 +31,15 @@ class ModelWrapper:
         self.ensemble_mode = ensemble_mode
 
         cfg = load_yaml_config(model_config)
+        if isinstance(cfg, dict) and isinstance(cfg.get("model"), dict):
+            cfg = cfg["model"]
+
+        checkpoint_paths = checkpoint if isinstance(checkpoint, list) else [checkpoint]
+        checkpoint_state = torch.load(checkpoint_paths[0], map_location=self.device, weights_only=False)
+        checkpoint_cfg = extract_model_config(checkpoint_state)
+        if checkpoint_cfg:
+            cfg = {**cfg, **checkpoint_cfg}
+
         self.model_cfg = TransformerConfig(
             vocab_size=cfg.get("vocab_size", TransformerConfig.vocab_size),
             d_model=cfg.get("d_model", TransformerConfig.d_model),
@@ -34,15 +47,29 @@ class ModelWrapper:
             num_layers=cfg.get("num_layers", TransformerConfig.num_layers),
             dim_feedforward=cfg.get("dim_feedforward", TransformerConfig.dim_feedforward),
             dropout=cfg.get("dropout", TransformerConfig.dropout),
+            max_position_embeddings=cfg.get(
+                "max_position_embeddings", TransformerConfig.max_position_embeddings
+            ),
             liability_keys=tuple(cfg.get("liability_keys", list(TransformerConfig.liability_keys))),
+            encoder_type=cfg.get("encoder_type", TransformerConfig.encoder_type),
+            use_rope=cfg.get("use_rope", TransformerConfig.use_rope),
+            norm_type=cfg.get("norm_type", TransformerConfig.norm_type),
+            activation=cfg.get("activation", TransformerConfig.activation),
+            ssm_d_state=cfg.get("ssm_d_state", TransformerConfig.ssm_d_state),
+            ssm_d_conv=cfg.get("ssm_d_conv", TransformerConfig.ssm_d_conv),
+            ssm_expand=cfg.get("ssm_expand", TransformerConfig.ssm_expand),
+            ssm_dt_rank=cfg.get("ssm_dt_rank", TransformerConfig.ssm_dt_rank),
         )
+        self.mlm_probability = float(cfg.get("mlm_probability", 0.15))
 
         # Load single or multiple models
         if isinstance(checkpoint, list):
             self.models = []
-            for ckpt in checkpoint:
+            for idx, ckpt in enumerate(checkpoint):
                 model = AbPropModel(self.model_cfg).to(self.device)
-                state = torch.load(ckpt, map_location=self.device, weights_only=False)
+                state = checkpoint_state if idx == 0 else torch.load(
+                    ckpt, map_location=self.device, weights_only=False
+                )
                 model_state = state.get("model_state_dict", state.get("model_state", state))
                 model.load_state_dict(model_state, strict=False)
                 model.eval()
@@ -50,40 +77,39 @@ class ModelWrapper:
             self.ensemble_mode = True
         else:
             self.model = AbPropModel(self.model_cfg).to(self.device)
-            state = torch.load(checkpoint, map_location=self.device, weights_only=False)
+            state = checkpoint_state
             model_state = state.get("model_state_dict", state.get("model_state", state))
             self.model.load_state_dict(model_state, strict=False)
             self.model.eval()
             self.models = [self.model]
 
-        self.collate = build_collate_fn(generate_mlm=True)
+        self.max_length = int(self.model_cfg.max_position_embeddings)
 
     def score_perplexity(
         self, sequences: List[str], return_std: bool = False
     ) -> Union[List[float], Dict[str, List[float]]]:
         """Score perplexity with optional ensemble std deviation."""
-        batch = self.collate([{"sequence": seq} for seq in sequences])
+        batch = batch_encode(
+            sequences,
+            add_special=True,
+            max_length=self.max_length,
+            invalid_policy="replace",
+        )
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
+        masked_input_ids, labels = apply_mlm_mask(
+            input_ids,
+            attention_mask,
+            mlm_probability=self.mlm_probability,
+        )
 
         all_perplexities = []
 
         for model in self.models:
             with torch.no_grad():
-                outputs = model(input_ids, attention_mask, tasks=("mlm",))
+                outputs = model(masked_input_ids, attention_mask, tasks=("mlm",))
                 logits = outputs["mlm_logits"]
-
-            labels = input_ids[:, 1:].contiguous()
-            logits = logits[:, :-1, :].contiguous()
-            loss = torch.nn.functional.cross_entropy(
-                logits.view(-1, logits.size(-1)),
-                labels.view(-1),
-                ignore_index=0,
-                reduction="none",
-            ).view(labels.size())
-            mask = (labels != 0).float()
-            per_seq_loss = (loss * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1)
-            perplexities = torch.exp(per_seq_loss)
+            perplexities = mlm_perplexity_from_logits(logits, labels)
             all_perplexities.append(perplexities)
 
         # Average across models if ensemble
@@ -100,9 +126,19 @@ class ModelWrapper:
         self, sequences: List[str], return_std: bool = False
     ) -> Union[List[Dict[str, float]], Dict[str, List[Dict[str, float]]]]:
         """Score liabilities with optional ensemble std deviation."""
-        batch = self.collate([{"sequence": seq} for seq in sequences])
+        batch = batch_encode(
+            sequences,
+            add_special=True,
+            max_length=self.max_length,
+            invalid_policy="replace",
+        )
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
+        masked_input_ids, labels = apply_mlm_mask(
+            input_ids,
+            attention_mask,
+            mlm_probability=self.mlm_probability,
+        )
 
         all_preds = []
 
@@ -139,7 +175,12 @@ class ModelWrapper:
         """Return mean and variance of perplexity estimates via MC dropout / ensembles."""
         if mc_samples <= 0:
             raise ValueError("mc_samples must be positive.")
-        batch = self.collate([{"sequence": seq} for seq in sequences])
+        batch = batch_encode(
+            sequences,
+            add_special=True,
+            max_length=self.max_length,
+            invalid_policy="replace",
+        )
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
 
@@ -149,7 +190,7 @@ class ModelWrapper:
         with torch.no_grad():
             for model in self.models:
                 passes = model.stochastic_forward(
-                    input_ids,
+                    masked_input_ids,
                     attention_mask,
                     tasks=("mlm",),
                     mc_samples=mc_passes,
@@ -158,7 +199,10 @@ class ModelWrapper:
                 )
                 for out in passes:
                     sample_perplexities.append(
-                        sequence_perplexity_from_logits(out["mlm_logits"].detach(), input_ids, pad_token_id=pad_token_id)
+                        mlm_perplexity_from_logits(
+                            out["mlm_logits"].detach(),
+                            labels,
+                        )
                         .detach()
                         .cpu()
                     )
@@ -183,7 +227,12 @@ class ModelWrapper:
         """Return mean and variance of liability predictions."""
         if mc_samples <= 0:
             raise ValueError("mc_samples must be positive.")
-        batch = self.collate([{"sequence": seq} for seq in sequences])
+        batch = batch_encode(
+            sequences,
+            add_special=True,
+            max_length=self.max_length,
+            invalid_policy="replace",
+        )
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
 
@@ -244,6 +293,8 @@ def create_app(
     Returns:
         FastAPI application instance
     """
+    if FastAPI is None or HTTPException is None:  # pragma: no cover - guarded for optional dep
+        raise RuntimeError("fastapi is required to create the inference app (install with .[serve]).")
     wrapper = ModelWrapper(checkpoint, model_config, device, ensemble_mode)
     app = FastAPI(title="AbProp Inference API")
 
@@ -262,7 +313,10 @@ def create_app(
         if not isinstance(sequences, list) or not sequences:
             raise HTTPException(status_code=400, detail="provide non-empty 'sequences' list")
         return_std = payload.get("return_std", False)
-        scores = wrapper.score_perplexity(sequences, return_std=return_std)
+        try:
+            scores = wrapper.score_perplexity(sequences, return_std=return_std)
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=str(err))
         return {"perplexity": scores}
 
     @app.post("/score/liabilities")
@@ -271,7 +325,10 @@ def create_app(
         if not isinstance(sequences, list) or not sequences:
             raise HTTPException(status_code=400, detail="provide non-empty 'sequences' list")
         return_std = payload.get("return_std", False)
-        scores = wrapper.score_liabilities(sequences, return_std=return_std)
+        try:
+            scores = wrapper.score_liabilities(sequences, return_std=return_std)
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=str(err))
         return {"liabilities": scores}
 
     @app.post("/score/perplexity/uncertainty")

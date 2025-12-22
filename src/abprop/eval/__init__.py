@@ -4,11 +4,12 @@ from .metrics import classification_summary, compute_perplexity, regression_per_
 from .uncertainty import (
     SampleStatistics,
     TemperatureScaler,
+    causal_perplexity_from_logits,
     combine_ensemble,
     expected_calibration_error,
     mean_variance,
+    mlm_perplexity_from_logits,
     regression_uncertainty_summary,
-    sequence_perplexity_from_logits,
     stack_samples,
 )
 from .stratified import (
@@ -29,11 +30,12 @@ __all__ = [
     "StratumMetrics",
     "SampleStatistics",
     "TemperatureScaler",
+    "mlm_perplexity_from_logits",
+    "causal_perplexity_from_logits",
     "combine_ensemble",
     "expected_calibration_error",
     "mean_variance",
     "regression_uncertainty_summary",
-    "sequence_perplexity_from_logits",
     "stack_samples",
     "discover_strata",
     "evaluate_strata",

@@ -86,6 +86,8 @@ print(f"Logits: {outputs['mlm_logits'].shape}")
 | `abgen-base-v2` | Transformer++ | MLM | 1.85 PPL | RoPE + RMSNorm + SwiGLU baseline |
 | `abprop-legacy` | BERT | MLM | 1.95 PPL | Legacy architecture (for comparison) |
 
+Perplexity in this repo refers to **MLM perplexity** computed on masked tokens (default 15% mask rate), not causal/next-token perplexity.
+
 ---
 
 ## Project Layout

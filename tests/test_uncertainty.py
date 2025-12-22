@@ -7,19 +7,17 @@ from abprop.eval.uncertainty import (
     TemperatureScaler,
     expected_calibration_error,
     regression_uncertainty_summary,
-    sequence_perplexity_from_logits,
+    mlm_perplexity_from_logits,
 )
 
 
-def test_sequence_perplexity_from_logits_close_to_one():
-    labels = torch.tensor([[0, 1, 2, 3]], dtype=torch.long)
+def test_mlm_perplexity_ignores_unmasked_tokens():
+    labels = torch.tensor([[-100, 2, -100, -100]], dtype=torch.long)
     vocab_size = 4
     logits = torch.full((1, labels.size(1), vocab_size), -5.0, dtype=torch.float32)
-    for idx in range(labels.size(1) - 1):
-        target = labels[0, idx + 1]
-        logits[0, idx, target] = 5.0
+    logits[0, 1, 2] = 5.0  # correct only for the masked token
 
-    perplexity = sequence_perplexity_from_logits(logits, labels, pad_token_id=0)
+    perplexity = mlm_perplexity_from_logits(logits, labels)
     assert perplexity.shape == (1,)
     assert perplexity.item() == pytest.approx(1.0, rel=1e-2)
 

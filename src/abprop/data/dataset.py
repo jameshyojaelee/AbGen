@@ -18,7 +18,7 @@ try:
 except ImportError:  # pragma: no cover - pyarrow is a dependency, but guard just in case
     pa_dataset = None
 
-from abprop.tokenizers import TOKEN_TO_ID, VOCAB, collate_batch
+from abprop.tokenizers import apply_mlm_mask, collate_batch
 
 
 def _maybe_to_dict(value: object) -> Dict[str, float]:
@@ -238,12 +238,6 @@ def build_collate_fn(
 
     rng = rng or random.Random()
 
-    pad_id = TOKEN_TO_ID["<pad>"]
-    bos_id = TOKEN_TO_ID["<bos>"]
-    eos_id = TOKEN_TO_ID["<eos>"]
-    mask_id = TOKEN_TO_ID["<mask>"]
-    vocab_size = len(VOCAB)
-
     def collate(examples: Sequence[Dict[str, object]]) -> Dict[str, object]:
         sequences = [example["sequence"] for example in examples]
         batch = collate_batch(sequences, add_special=True)
@@ -285,31 +279,12 @@ def build_collate_fn(
             result["token_labels"] = token_labels
 
         if generate_mlm:
-            labels = input_ids.clone()
-            special_mask = (
-                (input_ids == pad_id)
-                | (input_ids == bos_id)
-                | (input_ids == eos_id)
+            masked_input_ids, labels = apply_mlm_mask(
+                input_ids,
+                attention_mask,
+                mlm_probability=mlm_probability,
             )
-            candidate_mask = attention_mask & ~special_mask
-            prob_matrix = torch.full(input_ids.shape, mlm_probability, dtype=torch.float32)
-            masked_indices = torch.bernoulli(prob_matrix).bool() & candidate_mask
-            labels[~masked_indices] = -100
-
-            # Apply 80% <mask>, 10% random, 10% original
-            replace_prob = torch.full(input_ids.shape, 0.8, dtype=torch.float32)
-            indices_replaced = torch.bernoulli(replace_prob).bool() & masked_indices
-            input_ids[indices_replaced] = mask_id
-
-            random_prob = torch.full(input_ids.shape, 0.5, dtype=torch.float32)
-            indices_random = torch.bernoulli(random_prob).bool() & masked_indices & ~indices_replaced
-            random_tokens = torch.randint(
-                vocab_size,
-                input_ids.shape,
-                dtype=torch.long,
-            )
-            input_ids[indices_random] = random_tokens[indices_random]
-
+            result["input_ids"] = masked_input_ids
             result["labels"] = labels
         else:
             result["labels"] = input_ids.clone()

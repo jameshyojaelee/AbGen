@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
+from abprop.eval.perplexity import causal_perplexity_from_logits, mlm_perplexity_from_logits
 Tensor = torch.Tensor
 
 
@@ -48,36 +48,6 @@ def combine_ensemble(samples: Sequence[Tensor]) -> SampleStatistics:
     """Aggregate predictions from an ensemble of models."""
     stacked = stack_samples(samples)
     return mean_variance(stacked)
-
-
-def sequence_perplexity_from_logits(
-    logits: Tensor,
-    labels: Tensor,
-    pad_token_id: int = 0,
-) -> Tensor:
-    """
-    Compute per-sequence perplexity given logits and labels.
-
-    Args:
-        logits: Tensor of shape (batch, seq_len, vocab)
-        labels: Tensor of shape (batch, seq_len)
-        pad_token_id: Padding token index to ignore.
-
-    Returns:
-        Tensor of shape (batch,) with per-sequence perplexity values.
-    """
-    shifted_logits = logits[:, :-1, :].contiguous()
-    shifted_labels = labels[:, 1:].contiguous()
-    per_token_loss = F.cross_entropy(
-        shifted_logits.view(-1, shifted_logits.size(-1)),
-        shifted_labels.view(-1),
-        ignore_index=pad_token_id,
-        reduction="none",
-    ).view(shifted_labels.size())
-    mask = (shifted_labels != pad_token_id).float()
-    denom = mask.sum(dim=1).clamp_min(1.0)
-    per_sequence_loss = (per_token_loss * mask).sum(dim=1) / denom
-    return torch.exp(per_sequence_loss)
 
 
 def regression_uncertainty_summary(
@@ -234,9 +204,9 @@ __all__ = [
     "TemperatureScaler",
     "combine_ensemble",
     "expected_calibration_error",
+    "mlm_perplexity_from_logits",
+    "causal_perplexity_from_logits",
     "mean_variance",
     "regression_uncertainty_summary",
-    "sequence_perplexity_from_logits",
     "stack_samples",
 ]
-

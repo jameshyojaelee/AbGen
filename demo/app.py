@@ -16,17 +16,16 @@ except ImportError as exc:  # pragma: no cover - runtime dependency
 
 try:  # pragma: no cover - environment may lack torch
     import torch
-    import torch.nn.functional as F
 except ImportError:  # pragma: no cover - degrade gracefully
     torch = None
-    F = None
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
 
 from abprop.models import AbPropModel, TransformerConfig
-from abprop.tokenizers.aa import ID_TO_TOKEN, TOKEN_TO_ID, collate_batch
+from abprop.eval.perplexity import mlm_perplexity_from_logits
+from abprop.tokenizers.aa import ID_TO_TOKEN, apply_mlm_mask, collate_batch
 
 
 @dataclass
@@ -71,13 +70,8 @@ def parse_sequences(text: str) -> List[Tuple[str, str]]:
     return sequences
 
 
-def compute_perplexity(logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor) -> float:
-    vocab = logits.size(-1)
-    loss = F.cross_entropy(logits.view(-1, vocab), targets.view(-1), reduction="none")
-    masked = loss * mask.view(-1)
-    denom = mask.sum().clamp_min(1.0)
-    mean_loss = masked.sum() / denom
-    return float(torch.exp(mean_loss))
+def compute_perplexity(logits: torch.Tensor, labels: torch.Tensor) -> float:
+    return float(mlm_perplexity_from_logits(logits, labels).item())
 
 
 def decode_tokens(input_ids: Sequence[int]) -> List[str]:
@@ -152,20 +146,21 @@ def analyze(text: str, mc_samples: int, cfg: DemoConfig, model: AbPropModel | No
         batch = collate_batch([sequence], add_special=True)
         input_ids = batch["input_ids"]
         attention_mask = batch["attention_mask"].to(dtype=torch.bool)
+        masked_input_ids, mlm_labels = apply_mlm_mask(
+            input_ids,
+            attention_mask,
+            mlm_probability=0.15,
+        )
         with torch.no_grad():
             outputs = model(
-                input_ids,
+                masked_input_ids,
                 attention_mask,
                 tasks=("cls", "reg"),
                 return_attentions=True,
             )
         hidden = outputs["hidden_states"]
         logits = model.mlm_head(hidden)
-        shifted_targets = input_ids.clone()
-        shifted_targets[:, :-1] = input_ids[:, 1:]
-        shifted_targets[:, -1] = TOKEN_TO_ID["<pad>"]
-        token_mask = (shifted_targets != TOKEN_TO_ID["<pad>"]).float()
-        perplexity = compute_perplexity(logits, shifted_targets, token_mask)
+        perplexity = compute_perplexity(logits, mlm_labels)
 
         cls_logits = outputs.get("cls_logits", torch.zeros_like(input_ids, dtype=torch.float))
         cdr_mask = torch.argmax(cls_logits, dim=-1).squeeze(0).tolist()
@@ -248,4 +243,3 @@ def build_app():
 
 if __name__ == "__main__":
     build_app().launch()
-

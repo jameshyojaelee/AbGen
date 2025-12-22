@@ -28,6 +28,13 @@ scripts/reproduce_minimal.sh
 - Attention and embedding visualizations: `outputs/attention/`, `docs/figures/embeddings/`
 - Publication figures: `docs/figures/publication/`
 - Registry snapshot: `models/registry.json`
+- Training config snapshot: `outputs/config_snapshot.json`
+
+## Checkpoint Configuration
+- Training checkpoints now store `model_config` (full `TransformerConfig` fields) inside the `.pt` file.
+- CLI overrides passed via `--config-overrides` are recorded as `config_overrides` in the checkpoint
+  and in `outputs/config_snapshot.json`.
+- Eval/serve scripts prefer checkpoint `model_config` and then apply any explicit CLI overrides.
 
 ## Continuous Checks
 - GitHub Action `.github/workflows/benchmark.yml` runs scheduled regression guardrails.

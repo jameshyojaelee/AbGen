@@ -21,8 +21,8 @@ from abprop.eval.uncertainty import (
     TemperatureScaler,
     expected_calibration_error,
     mean_variance,
+    mlm_perplexity_from_logits,
     regression_uncertainty_summary,
-    sequence_perplexity_from_logits,
     stack_samples,
 )
 from abprop.models import AbPropModel, TransformerConfig
@@ -160,6 +160,9 @@ def evaluate_split(
         for batch in dataloader:
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
+            mlm_labels = batch.get("labels")
+            if mlm_labels is not None and isinstance(mlm_labels, torch.Tensor):
+                mlm_labels = mlm_labels.to(device)
             mlm_labels = batch.get("labels")
             if mlm_labels is not None:
                 mlm_labels = mlm_labels.to(device)
@@ -352,7 +355,7 @@ def compute_uncertainty_metrics(
                     regression_means.append(stats.mean)
                     regression_vars.append(stats.variance)
 
-            if "mlm" in tasks:
+            if "mlm" in tasks and mlm_labels is not None:
                 mc_outputs = model.stochastic_forward(
                     input_ids,
                     attention_mask,
@@ -362,7 +365,10 @@ def compute_uncertainty_metrics(
                     no_grad=True,
                 )
                 sample_perplexities = [
-                    sequence_perplexity_from_logits(out["mlm_logits"].detach(), input_ids, pad_token_id=pad_token_id).cpu()
+                    mlm_perplexity_from_logits(
+                        out["mlm_logits"].detach(),
+                        mlm_labels,
+                    ).cpu()
                     for out in mc_outputs
                 ]
                 for ens_model in additional_models:
@@ -372,10 +378,9 @@ def compute_uncertainty_metrics(
                         tasks=("mlm",),
                     )
                     sample_perplexities.append(
-                        sequence_perplexity_from_logits(
+                        mlm_perplexity_from_logits(
                             ens_out["mlm_logits"].detach(),
-                            input_ids,
-                            pad_token_id=pad_token_id,
+                            mlm_labels,
                         ).cpu()
                     )
                 stats = mean_variance(stack_samples(sample_perplexities))

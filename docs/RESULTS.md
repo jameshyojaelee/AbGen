@@ -8,6 +8,8 @@
 
 All metrics originate from `outputs/real_data_run/checkpoints/best.pt`, reproduced via `scripts/reproduce_all.sh`. Append new rows or update numbers as fresh experiments land; keep this table synchronized with the README snapshot.
 
+**Perplexity definition:** All reported perplexities are MLM perplexities computed on masked tokens (default 15% mask rate), not autoregressive next-token perplexity.
+
 ## Simple Baseline Comparisons
 
 ### Publication Figures Pipeline
