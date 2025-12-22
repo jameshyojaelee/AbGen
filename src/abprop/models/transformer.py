@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -27,18 +27,78 @@ class TransformerConfig:
     mlm_weight: float = 1.0
     cls_weight: float = 1.0
     reg_weight: float = 1.0
+    # Modern Architecture Toggles
+    use_rope: bool = True
+    norm_type: str = "rmsnorm"  # "layernorm" or "rmsnorm"
+    activation: str = "swiglu"  # "relu", "gelu", "swiglu"
 
 
-def _get_activation_fn(name: str) -> Callable[[torch.Tensor], torch.Tensor]:
-    if name == "relu":
-        return F.relu
-    if name == "gelu":
-        return F.gelu
-    raise ValueError(f"Unsupported activation '{name}'.")
+class RMSNorm(nn.Module):
+    def __init__(self, d_model: int, eps: float = 1e-8):
+        super().__init__()
+        self.eps = eps
+        self.scale = nn.Parameter(torch.ones(d_model))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        norm = torch.mean(x.pow(2), dim=-1, keepdim=True)
+        x_normed = x * torch.rsqrt(norm + self.eps)
+        return self.scale * x_normed
+
+
+class RotaryEmbedding(nn.Module):
+    def __init__(self, dim: int, max_seq_len: int = 2048, base: int = 10000):
+        super().__init__()
+        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
+        self.register_buffer("inv_freq", inv_freq)
+        self.max_seq_len = max_seq_len
+        self.dim = dim
+        self._set_cos_sin_cache(max_seq_len)
+
+    def _set_cos_sin_cache(self, seq_len: int, device: torch.device | None = None, dtype: torch.dtype | None = None):
+        self.max_seq_len = seq_len
+        t = torch.arange(seq_len, device=device, dtype=self.inv_freq.dtype)
+        freqs = torch.outer(t, self.inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.register_buffer("cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False)
+        self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
+
+    def forward(self, q: torch.Tensor, k: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # q, k: [batch, head, seq_len, head_dim]
+        seq_len = q.shape[2]
+        if seq_len > self.max_seq_len:
+            self._set_cos_sin_cache(seq_len, device=q.device, dtype=q.dtype)
+
+        cos = self.cos_cached[:, :, :seq_len, ...]
+        sin = self.sin_cached[:, :, :seq_len, ...]
+        
+        return (
+            self._apply_rotary_pos_emb(q, cos, sin),
+            self._apply_rotary_pos_emb(k, cos, sin),
+        )
+
+    def _apply_rotary_pos_emb(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+        d = x.shape[-1] // 2
+        x1 = x[..., :d]
+        x2 = x[..., d:]
+        return (x * cos) + (torch.cat((-x2, x1), dim=-1) * sin)
+
+
+def _get_norm_fn(name: str, d_model: int, eps: float = 1e-5) -> nn.Module:
+    if name == "rmsnorm":
+        return RMSNorm(d_model, eps=eps)
+    if name == "layernorm":
+        return nn.LayerNorm(d_model, eps=eps)
+    raise ValueError(f"Unsupported norm '{name}'.")
+
+
+class SwiGLU(nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x, gate = x.chunk(2, dim=-1)
+        return F.silu(gate) * x
 
 
 class TransformerEncoderLayerWithAttention(nn.Module):
-    """Minimal Transformer encoder layer that can optionally expose self-attention weights."""
+    """Modernized Transformer encoder layer: Pre-Norm, RoPE support, SwiGLU."""
 
     def __init__(
         self,
@@ -48,24 +108,49 @@ class TransformerEncoderLayerWithAttention(nn.Module):
         dropout: float,
         *,
         activation: str = "relu",
+        norm_type: str = "layernorm",
         layer_norm_eps: float = 1e-5,
+        rotary_emb: Optional[RotaryEmbedding] = None,
     ) -> None:
         super().__init__()
+        self.rotary_emb = rotary_emb
+        self.nhead = nhead
+        self.head_dim = d_model // nhead
+        
+        # Self-Attention
         self.self_attn = nn.MultiheadAttention(
             embed_dim=d_model,
             num_heads=nhead,
             dropout=dropout,
             batch_first=True,
         )
-        self.linear1 = nn.Linear(d_model, dim_feedforward)
-        self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model)
+        
+        # Feed-forward
+        self.activation_name = activation
+        if activation == "swiglu":
+            # For SwiGLU, we need (gate + value), so separate project or double width?
+            # Standard practice: W1 (gate), W3 (val) -> mul -> W2 (out).
+            # We will use "dim_feedforward" as the hidden size.
+            # So, linear1 maps d_model -> 2 * dim_feedforward
+            # linear2 maps dim_feedforward -> d_model
+            self.linear1 = nn.Linear(d_model, 2 * dim_feedforward, bias=False)
+            self.act_fn = SwiGLU()
+            self.linear2 = nn.Linear(dim_feedforward, d_model, bias=False)
+        else:
+            self.linear1 = nn.Linear(d_model, dim_feedforward)
+            self.linear2 = nn.Linear(dim_feedforward, d_model)
+            if activation == "relu":
+                self.act_fn = nn.ReLU()
+            elif activation == "gelu":
+                self.act_fn = nn.GELU()
+            else:
+                raise ValueError(f"Unsupported activation {activation}")
 
-        self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps)
-        self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps)
+        self.norm1 = _get_norm_fn(norm_type, d_model, layer_norm_eps)
+        self.norm2 = _get_norm_fn(norm_type, d_model, layer_norm_eps)
+        self.dropout = nn.Dropout(dropout)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
-        self.activation = _get_activation_fn(activation)
 
     def forward(
         self,
@@ -75,45 +160,192 @@ class TransformerEncoderLayerWithAttention(nn.Module):
         src_key_padding_mask: Optional[torch.Tensor] = None,
         return_attentions: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        attn_output, attn_weights = self.self_attn(
-            src,
-            src,
-            src,
-            attn_mask=src_mask,
-            key_padding_mask=src_key_padding_mask,
-            need_weights=return_attentions,
-            average_attn_weights=False,
-        )
-        src = src + self.dropout1(attn_output)
-        src = self.norm1(src)
+        
+        # PRE-NORM Architecture: x = x + attn(norm(x))
+        residual = src
+        x = self.norm1(src)
 
-        ff = self.linear2(self.dropout(self.activation(self.linear1(src))))
-        src = src + self.dropout2(ff)
-        src = self.norm2(src)
+        # Apply RoPE if present
+        # nn.MultiheadAttention doesn't natively support RoPE callbacks.
+        # We need to manually handle query/key projection if we want strictly correct RoPE,
+        # OR we hack it by applying RoPE to 'x' before attention if x is used as Q,K.
+        # However, MultiheadAttention does internal projections Q = x W_q.
+        # Applying RoPE requires access to Q, K *after* projection but *before* attention.
+        # Standard nn.MultiheadAttention makes this hard.
+        #
+        # OPTION: Re-implement MHA or use Scaled Dot Product Attention (SDPA) manually.
+        # Given this is a demo of "novelty", implementing a clean manual SDPA with RoPE is better
+        # than hacking nn.MHA. `F.scaled_dot_product_attention` is efficient.
+        # Let's do a Manual MHA here for full control.
+        
+        aln_output, attn_weights = self._mha_forward(
+            x, x, x, 
+            key_padding_mask=src_key_padding_mask,
+            attn_mask=src_mask,
+            return_attentions=return_attentions
+        )
+        
+        src = residual + self.dropout1(aln_output)
+        
+        # Feed Forward
+        residual = src
+        x = self.norm2(src)
+        
+        x = self.linear1(x)
+        x = self.act_fn(x)
+        x = self.dropout(x)
+        x = self.linear2(x)
+        
+        src = residual + self.dropout2(x)
 
         return src, attn_weights
 
+    def _mha_forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        key_padding_mask: Optional[torch.Tensor],
+        attn_mask: Optional[torch.Tensor],
+        return_attentions: bool
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        
+        # We will reuse the self.self_attn weights for convenience, or better,
+        # just use their parameters if we want to be compatible with loading weights?
+        # NOTE: Loading old weights into this new architecture will break anyway because
+        # of Pre-Norm/different shapes. So we can just act freely.
+        # To keep it simple, I'll allow self.self_attn to handle the projections if possible
+        # but since I need to inject RoPE, I need to extract Q, K, V.
+        #
+        # Workaround: Use self.self_attn.in_proj_weight/bias manually.
+        
+        B, L, E = query.shape
+        # standard MHA packs q,k,v in one weight if possible, or separate.
+        # Let's assume standard usage of the existing module to keep code size low is tricky with RoPE.
+        # I'll just rely on `F.multi_head_attention_forward`? No, too complex.
+        #
+        # Simplified Manual Attn using the linear layers from self.self_attn
+        # But wait, self.self_attn is an opaque bucket.
+        # Let's just define our own projections if we are replacing the architecture.
+        # To be safe and cleaner: WE IGNORE self.self_attn and define new layers?
+        # No, let's try to grab weights from it to not break initialization logic if reused.
+        
+        qkv = self.self_attn.in_proj_weight
+        bias = self.self_attn.in_proj_bias
+        
+        if qkv is not None:
+             # Combined projection
+            qkv_out = F.linear(query, qkv, bias)
+            q, k, v = qkv_out.chunk(3, dim=-1)
+        else:
+             # Separated (if bias/kdim/vdim were different, but defaults are same)
+             # Fallback to separate
+             q = F.linear(query, self.self_attn.q_proj_weight, self.self_attn.q_proj_bias)
+             k = F.linear(key, self.self_attn.k_proj_weight, self.self_attn.k_proj_bias)
+             v = F.linear(value, self.self_attn.v_proj_weight, self.self_attn.v_proj_bias)
+
+        # Reshape to [B, H, L, D]
+        q = q.view(B, L, self.nhead, self.head_dim).transpose(1, 2)
+        k = k.view(B, L, self.nhead, self.head_dim).transpose(1, 2)
+        v = v.view(B, L, self.nhead, self.head_dim).transpose(1, 2)
+        
+        # Apply RoPE
+        if self.rotary_emb is not None:
+            q, k = self.rotary_emb(q, k)
+        
+        # Attention
+        # PyTorch SDPA prefers [B, H, L, D]
+        
+        # Mask handling is slightly complex for SDPA with different versions.
+        # If attn_mask is meant for bias-add (float) or bool mask.
+        dropout_p = self.dropout.p if self.training else 0.0
+        
+        # Ensure masks are correct format
+        # src_key_padding_mask is [B, L], True where padding.
+        # attn_mask might be [L, L] or [B*num_heads, L, L].
+        # Is causal mask used? BERT doesn't use causal usually.
+        
+        # For simplicity, combine masks.
+        is_causal = False
+        
+        # SDPA handles key_padding_mask automatically in newer torch?
+        # Check signature: query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False.
+        # It does NOT take key_padding_mask separate. We must merge.
+        
+        combined_mask = attn_mask
+        if key_padding_mask is not None:
+            # key_padding_mask: [B, S] (True=pad). Expand to [B, 1, 1, S]
+            pad_mask = key_padding_mask.view(B, 1, 1, L).expand(-1, self.nhead, -1, -1)
+            # attn_mask usually [L, L] for seq mask.
+            # We need a full bias mask.
+            if combined_mask is None:
+                combined_mask = torch.zeros((B, self.nhead, L, L), device=query.device, dtype=query.dtype)
+                combined_mask.masked_fill_(pad_mask, float("-inf"))
+            else:
+                # Merge logic (assuming additive mask)
+                combined_mask = combined_mask + pad_mask.float() * -1e9
+
+        out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=combined_mask, dropout_p=dropout_p, is_causal=is_causal
+        )
+        
+        if return_attentions:
+             # Re-compute weights for viz if requested (SDPA doesn't return them)
+             # This is expensive but necessary for viz.
+             # Or we fallback to manual logic.
+             # Given 'viz' is a feature (AbProp introspect), we should probably support it.
+             # But F.sdpa is fast.
+             # Let's do standard computation if return_attentions is True.
+             scale = self.head_dim ** -0.5
+             attn_logits = (q @ k.transpose(-2, -1)) * scale
+             if combined_mask is not None:
+                 attn_logits = attn_logits + combined_mask
+             attn_weights = F.softmax(attn_logits, dim=-1)
+             out = attn_weights @ v
+        else:
+             attn_weights = None
+
+        out = out.transpose(1, 2).contiguous().view(B, L, E)
+        out = self.self_attn.out_proj(out)
+        
+        return out, attn_weights
+
 
 class SmallEncoder(nn.Module):
-    """Lightweight Transformer encoder with learned positional embeddings."""
+    """Lightweight Transformer encoder with modernization support."""
 
     def __init__(self, config: TransformerConfig) -> None:
         super().__init__()
         self.config = config
         self.scale = config.d_model**-0.5
         self.token_embedding = nn.Embedding(config.vocab_size, config.d_model)
-        self.position_embedding = nn.Embedding(config.max_position_embeddings, config.d_model)
+        
+        # RoPE replaces absolute embeddings
+        self.use_rope = getattr(config, "use_rope", False)
+        if not self.use_rope:
+            self.position_embedding = nn.Embedding(config.max_position_embeddings, config.d_model)
+        else:
+            self.position_embedding = None
+            head_dim = config.d_model // config.nhead
+            self.rotary_emb = RotaryEmbedding(head_dim, max_seq_len=config.max_position_embeddings)
+
+        norm_type = getattr(config, "norm_type", "layernorm")
+        activation = getattr(config, "activation", "relu")
+
         self.layers = nn.ModuleList(
             TransformerEncoderLayerWithAttention(
                 d_model=config.d_model,
                 nhead=config.nhead,
                 dim_feedforward=config.dim_feedforward,
                 dropout=config.dropout,
+                activation=activation,
+                norm_type=norm_type,
+                rotary_emb=self.rotary_emb if self.use_rope else None,
             )
             for _ in range(config.num_layers)
         )
         self.dropout = nn.Dropout(config.dropout)
-        self.norm = nn.LayerNorm(config.d_model)
+        self.norm = _get_norm_fn(norm_type, config.d_model) # Final Norm for Pre-Norm architecture
         self.apply(self._init_weights)
 
     @staticmethod
@@ -131,15 +363,23 @@ class SmallEncoder(nn.Module):
         attention_mask: torch.Tensor,
         *,
         return_attentions: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[List[torch.Tensor]]] | torch.Tensor:
+    ) -> Union[Tuple[torch.Tensor, Optional[List[torch.Tensor]]], torch.Tensor]:
         attention_mask = attention_mask.bool()
-        positions = torch.arange(
-            input_ids.size(1), device=input_ids.device, dtype=torch.long
-        ).unsqueeze(0)
-        hidden = self.token_embedding(input_ids) * self.scale + self.position_embedding(positions)
+        
+        # Embeddings
+        hidden = self.token_embedding(input_ids) * self.scale
+        
+        if not self.use_rope:
+            positions = torch.arange(
+                input_ids.size(1), device=input_ids.device, dtype=torch.long
+            ).unsqueeze(0)
+            hidden = hidden + self.position_embedding(positions)
+        
         hidden = self.dropout(hidden)
         key_padding_mask = ~attention_mask
+        
         attentions: Optional[List[torch.Tensor]] = [] if return_attentions else None
+        
         for layer in self.layers:
             hidden, attn_weights = layer(
                 hidden,
@@ -148,7 +388,9 @@ class SmallEncoder(nn.Module):
             )
             if return_attentions and attn_weights is not None:
                 attentions.append(attn_weights)
+                
         encoded = self.norm(hidden)
+        
         if return_attentions:
             return encoded, attentions
         return encoded
@@ -159,6 +401,8 @@ class MLMHead(nn.Module):
 
     def __init__(self, hidden_size: int, vocab_size: int, embedding_weight: nn.Parameter) -> None:
         super().__init__()
+        # Ensure we use LayerNorm for head anyway, or match norm_type? 
+        # Usually head has its own LayerNorm.
         self.layer_norm = nn.LayerNorm(hidden_size)
         self.decoder = nn.Linear(hidden_size, vocab_size, bias=False)
         self.decoder.weight = embedding_weight
@@ -482,4 +726,6 @@ __all__ = [
     "SeqClassifierHead",
     "LiabilityRegHead",
     "AbPropModel",
+    "RotaryEmbedding",
+    "RMSNorm",
 ]
