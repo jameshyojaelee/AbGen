@@ -75,6 +75,9 @@ def load_model(checkpoint: Path, model_config: Path, device: torch.device) -> Ab
     if checkpoint_cfg:
         cfg = {**cfg, **checkpoint_cfg}
 
+    if cfg:
+        allowed = set(TransformerConfig.__dataclass_fields__.keys())
+        cfg = {key: value for key, value in cfg.items() if key in allowed}
     config = TransformerConfig(**cfg) if cfg else TransformerConfig()
     model = AbPropModel(config).to(device)
     model_state = state.get("model_state", state)

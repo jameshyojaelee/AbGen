@@ -126,6 +126,14 @@ def instantiate_model(model_cfg: Dict, checkpoint_path: Path, device: str) -> Ab
         mlm_weight=task_weights.get("mlm", defaults.mlm_weight),
         cls_weight=task_weights.get("cls", defaults.cls_weight),
         reg_weight=task_weights.get("reg", defaults.reg_weight),
+        encoder_type=model_cfg.get("encoder_type", defaults.encoder_type),
+        use_rope=model_cfg.get("use_rope", defaults.use_rope),
+        norm_type=model_cfg.get("norm_type", defaults.norm_type),
+        activation=model_cfg.get("activation", defaults.activation),
+        ssm_d_state=model_cfg.get("ssm_d_state", defaults.ssm_d_state),
+        ssm_d_conv=model_cfg.get("ssm_d_conv", defaults.ssm_d_conv),
+        ssm_expand=model_cfg.get("ssm_expand", defaults.ssm_expand),
+        ssm_dt_rank=model_cfg.get("ssm_dt_rank", defaults.ssm_dt_rank),
     )
 
     # Instantiate model

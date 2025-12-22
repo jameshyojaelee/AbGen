@@ -3,8 +3,8 @@
 | Task | Metric | Validation | Test | Dataset | Notes |
 |------|--------|------------|------|---------|-------|
 | Masked language modeling (Transformer) | Perplexity ↓ | **1.95** | 2.01 | real | Baseline checkpoint (`benchmarks/results/baseline_example.json`) |
-| Masked language modeling (Mamba) | Perplexity ↓ | TBD | TBD | synthetic | Reference run not yet benchmarked on real data |
-| Preference alignment (DPO) | Reward ↑ | TBD | TBD | synthetic | DPO-aligned checkpoint on synthetic preference pairs |
+| Masked language modeling (Mamba) | Perplexity ↓ | inf | inf | real | Synthetic-trained Mamba guardrail run; perplexity diverged on real eval |
+| Preference alignment (DPO) | DPO loss ↓ | 0.686 | 0.686 | synthetic | Last-step synthetic DPO loss from `outputs/dpo_guardrail/metrics.json` |
 | CDR identification | Macro F1 ↑ | **0.89** | 0.88 | real | Token classifier on OAS hold-out |
 | Liability regression | RMSE ↓ | **0.27** | 0.29 | real | MC-dropout (32 samples) uncertainty < 0.05 median |
 

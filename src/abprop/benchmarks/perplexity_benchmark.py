@@ -282,23 +282,26 @@ class PerplexityBenchmark(Benchmark):
         # 5. Distribution plot: sequence-level perplexities
         if results["sequence_level"]:
             perplexities = [s["perplexity"] for s in results["sequence_level"]]
-            fig, ax = plt.subplots(figsize=(10, 5))
-            ax.hist(perplexities, bins=50, color="purple", alpha=0.7, edgecolor="black")
-            ax.set_xlabel("Perplexity")
-            ax.set_ylabel("Count")
-            ax.set_title("Distribution of Sequence-Level Perplexities")
-            ax.axvline(
-                results["overall_perplexity"],
-                color="red",
-                linestyle="--",
-                label=f"Mean: {results['overall_perplexity']:.2f}"
-            )
-            ax.legend()
-            plt.tight_layout()
-            plot_path = output_dir / "perplexity_distribution.png"
-            fig.savefig(plot_path, dpi=150)
-            plt.close(fig)
-            plots["distribution"] = plot_path
+            finite = [p for p in perplexities if np.isfinite(p)]
+            if finite:
+                fig, ax = plt.subplots(figsize=(10, 5))
+                ax.hist(finite, bins=50, color="purple", alpha=0.7, edgecolor="black")
+                ax.set_xlabel("Perplexity")
+                ax.set_ylabel("Count")
+                ax.set_title("Distribution of Sequence-Level Perplexities")
+                if np.isfinite(results["overall_perplexity"]):
+                    ax.axvline(
+                        results["overall_perplexity"],
+                        color="red",
+                        linestyle="--",
+                        label=f"Mean: {results['overall_perplexity']:.2f}"
+                    )
+                    ax.legend()
+                plt.tight_layout()
+                plot_path = output_dir / "perplexity_distribution.png"
+                fig.savefig(plot_path, dpi=150)
+                plt.close(fig)
+                plots["distribution"] = plot_path
 
         # Save metrics to JSON
         metrics_path = output_dir / "metrics.json"
