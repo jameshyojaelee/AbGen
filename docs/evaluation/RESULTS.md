@@ -8,6 +8,15 @@
 | CDR identification | Macro F1 ↑ | **0.89** | 0.88 | real | Token classifier on OAS hold-out |
 | Liability regression | RMSE ↓ | **0.27** | 0.29 | real | MC-dropout (32 samples) uncertainty < 0.05 median |
 
+## Design Benchmark (MLM Edit Sampler)
+- Source: `outputs/benchmarks/design/summary.json`
+- Metrics:
+  - valid_fraction: 0.7083
+  - liability_pass_fraction: 0.9583
+  - unique_fraction: 1.0
+  - mean_pairwise_identity: 0.0814
+  - mean_reward_delta: 0.0423
+
 All metrics originate from `outputs/real_data_run/checkpoints/best.pt`, reproduced via `scripts/reproduce_all.sh`. Append new rows or update numbers as fresh experiments land; keep this table synchronized with the README snapshot.
 
 **Perplexity definition:** All reported perplexities are MLM perplexities computed on masked tokens (default 15% mask rate), not autoregressive next-token perplexity.
