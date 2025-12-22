@@ -11,7 +11,6 @@
 AbGen moves beyond simple property prediction to true *generative design*. It combines modern engineering (RoPE, RMSNorm) with cutting-edge sequence modeling (Linear-time SSMs) to design antibodies that meet complex developability and binding constraints.
 
 ---
-
 ## Key Features
 
 - **⚡ Next-Gen Architecture**: Choose between **Mamba-S6** (linear scaling for long complexes) or modernized **Transformers** (RoPE, RMSNorm, SwiGLU).
@@ -93,15 +92,3 @@ print(f"Logits: {outputs['mlm_logits'].shape}")
 │   │   └── dpo.py          # [NEW] Direct Preference Optimization
 └── tests/                  
 ```
-
----
-
-## Contributing
-
-We welcome contributions on:
-1.  **New Rewards**: Implementing biophysical reward models for DPO alignment.
-2.  **Structural Modalities**: Integrating Foldseek structural tokens into the Mamba encoder.
-
----
-
-*AbGen is released under the Apache 2.0 License.*
