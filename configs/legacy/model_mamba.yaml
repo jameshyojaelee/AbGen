@@ -1,0 +1,2 @@
+# Deprecated: use configs/model.yaml with --config-overrides "encoder_type=mamba"
+encoder_type: mamba

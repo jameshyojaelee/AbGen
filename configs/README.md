@@ -17,3 +17,5 @@
 
 - `configs/legacy/bench.yaml` — legacy benchmark sweep config for `scripts/dev/bench_train.py`.
 - `configs/legacy/benchmarks_tmp.yaml` — temporary benchmark config kept for reference.
+- `configs/legacy/benchmarks_local.yaml` — deprecated local benchmark paths (use `configs/benchmarks.yaml` instead).
+- `configs/legacy/model_mamba.yaml` — deprecated Mamba override (use `configs/model.yaml` + `--config-overrides`). 

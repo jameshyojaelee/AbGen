@@ -32,6 +32,11 @@ cd abgen
 pip install -e '.[dev,serve,bench,viz,dashboard]'
 ```
 
+### Documentation Hub
+
+For the full playbook (training, evaluation, generation, DPO, benchmarks), see:
+- `docs/README.md`
+
 ### 2. Train a Mamba Model
 
 Train a reference Mamba/SSM model on antibody sequences:

@@ -3,6 +3,14 @@
 This is the consolidated documentation for the AbGen/AbProp codebase: setup, training, evaluation,
 generation, preferences/DPO, benchmarks, and guardrails.
 
+## Navigation
+
+- Training & eval: `docs/training/README.md`
+- Generation & design: `docs/design/README.md`
+- Benchmarks & guardrails: `docs/evaluation/README.md`
+- Data & ETL: `docs/data/README.md`
+- Reference docs: `docs/reference/README.md`
+
 ## Environment
 
 ```bash
@@ -166,6 +174,6 @@ DPO:
 - `src/abprop/` — package code
 - `scripts/` — CLIs (core) and `scripts/dev/` smoke/bench
 - `configs/` — configs (`configs/legacy/` deprecated)
-- `docs/` — this playbook + `docs/figures/`
+- `docs/` — hub + topic subfolders (`training/`, `design/`, `evaluation/`, `data/`, `reference/`)
 - `tests/` — unit/integration tests
 - `outputs/`, `mlruns/` — generated artifacts (ignored by git)
