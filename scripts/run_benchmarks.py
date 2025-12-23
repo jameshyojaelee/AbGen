@@ -442,15 +442,25 @@ def main(argv: list[str] | None = None) -> None:
         else:
             missing_regression.append("perplexity")
     if "cdr_classification" in summary and isinstance(summary["cdr_classification"], dict):
-        value = summary["cdr_classification"].get("f1")
-        if _valid_number(value):
+        f1_value = summary["cdr_classification"].get("f1")
+        if _valid_number(f1_value):
             regression["benchmarks"]["cdr_classification"] = {
                 "metric": "f1",
-                "value": float(value),
+                "value": float(f1_value),
                 "higher_is_better": True,
             }
         else:
             missing_regression.append("cdr_classification")
+
+        acc_value = summary["cdr_classification"].get("accuracy")
+        if _valid_number(acc_value):
+            regression["benchmarks"]["cdr_classification_accuracy"] = {
+                "metric": "accuracy",
+                "value": float(acc_value),
+                "higher_is_better": True,
+            }
+        else:
+            missing_regression.append("cdr_classification_accuracy")
     if "liability" in summary and isinstance(summary["liability"], dict):
         mse = summary["liability"].get("overall_mse")
         rmse = math.sqrt(float(mse)) if _valid_number(mse) and float(mse) >= 0 else None

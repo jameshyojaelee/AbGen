@@ -1,0 +1,26 @@
+{
+  "commit": "local",
+  "timestamp": "2025-12-23T00:01:04Z",
+  "benchmarks": {
+    "perplexity": {
+      "metric": "overall_perplexity",
+      "value": 26.200725555419922,
+      "higher_is_better": false
+    },
+    "cdr_classification": {
+      "metric": "f1",
+      "value": 0.0,
+      "higher_is_better": true
+    },
+    "cdr_classification_accuracy": {
+      "metric": "accuracy",
+      "value": 0.7368421052631579,
+      "higher_is_better": true
+    },
+    "liability_regression": {
+      "metric": "rmse",
+      "value": 0.6213129724328663,
+      "higher_is_better": false
+    }
+  }
+}

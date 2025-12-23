@@ -12,6 +12,7 @@
 - `scripts/run_benchmarks.py` — run benchmark suite
 - `scripts/run_design_benchmark.py` — generation-centric design benchmark
 - `scripts/run_guardrails.py` — regression + smoke guardrails (transformer/mamba/DPO)
+- `scripts/run_ci_guardrails.py` — CI runner that trains tiny models and executes `run_guardrails.py` against committed baselines
 - `scripts/registry.py` — model registry CLI
 - `scripts/serve.py` — FastAPI server wrapper
 - `scripts/visualize_attention.py` — attention visualization

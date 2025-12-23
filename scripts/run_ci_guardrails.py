@@ -154,6 +154,9 @@ def main(argv: Optional[List[str]] = None) -> None:
     )
 
     # 4) Tiny DPO alignment (uses preferences file)
+    registry_path = output_dir / "registry.json"
+    if registry_path.exists():
+        registry_path.unlink()
     _run(
         [
             sys.executable,
@@ -177,7 +180,7 @@ def main(argv: Optional[List[str]] = None) -> None:
             "--log-interval",
             "10",
             "--registry",
-            str(output_dir / "registry.json"),
+            str(registry_path),
             "--model-id",
             "ci-dpo",
         ],

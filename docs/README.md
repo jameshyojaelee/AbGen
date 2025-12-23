@@ -108,12 +108,16 @@ python scripts/run_design_benchmark.py \
 
 Guardrails (regression + smoke):
 ```bash
-python scripts/run_guardrails.py \
-  --transformer-new outputs/guardrails/transformer.json --transformer-ref benchmarks/results/baseline_example.json \
-  --mamba-new outputs/guardrails/mamba.json --mamba-ref benchmarks/results/baseline_example.json \
-  --dpo-new outputs/guardrails/dpo.json --dpo-ref benchmarks/results/baseline_example.json \
-  --generation-checkpoint outputs/transformer_run/checkpoints/best.pt
+python scripts/run_ci_guardrails.py \
+  --train-steps 10 \
+  --dpo-steps 10 \
+  --batch-size 2 \
+  --max-samples 32
 ```
+
+Notes:
+- Uses the tracked fixture dataset (`tests/fixtures/oas_fixture.csv`) and CI benchmark config (`configs/benchmarks_ci.yaml`).
+- Compares against committed baselines: `benchmarks/results/baseline_ci_transformer.json`, `benchmarks/results/baseline_ci_mamba.json`, `benchmarks/results/baseline_ci_dpo.json`.
 
 ## Results snapshot
 

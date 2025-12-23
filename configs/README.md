@@ -5,8 +5,10 @@
 - `configs/train.yaml` — training loop defaults (`scripts/train.py`, `scripts/train_cv.py`).
 - `configs/model.yaml` — model architecture knobs (transformer + Mamba + DPO).
 - `configs/data.yaml` — data paths and parquet export layout (`scripts/etl.py`, `scripts/train.py`, `scripts/eval.py`).
+- `configs/data_ci.yaml` — CI fixture dataset config (tracked CSV under `tests/fixtures/`).
 - `configs/dist.yaml` — distributed training presets (`scripts/launch_slurm.py`).
 - `configs/benchmarks.yaml` — benchmark registry configuration (`scripts/run_benchmarks.py`).
+- `configs/benchmarks_ci.yaml` — minimal CI benchmark config (fixture dataset, fast guardrails).
 - `configs/therapeutic_bench.yaml` — therapeutic benchmark configuration (dataset curation + eval).
 - `configs/esm2_tiny.yaml` — tiny ESM2 probe config (`scripts/train_esm2_probes.py`).
 - `configs/dashboard.example.json` — Streamlit dashboard config template.
