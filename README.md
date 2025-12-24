@@ -121,6 +121,17 @@ python scripts/run_design_benchmark.py \
   --output-dir outputs/benchmarks
 ```
 
+Latest design benchmark snapshot (from `outputs/benchmarks/design/summary.json`):
+
+| Metric | Value |
+|---|---:|
+| num_candidates | 24 |
+| valid_fraction | 0.7083 |
+| liability_pass_fraction | 0.9583 |
+| unique_fraction | 1.0000 |
+| mean_pairwise_identity | 0.0814 |
+| mean_reward_delta | 0.0423 |
+
 Example output (from `outputs/generation/<run>/candidates.jsonl`):
 ```json
 {"id":"cand_0000","sequence":"EVQLVESGGGLVKPGGSLRLSCAASGFTFSSYAMSWVRQAPGKGLEWVS...","length":120,"liabilities":{"nglyc":0.0083,"deamidation":0.0000,"isomerization":0.0000,"oxidation":0.0000,"free_cysteines":0.0000},"uncertainty":{"mean":{"nglyc":0.0102,"deamidation":0.0001,"isomerization":0.0000,"oxidation":0.0000,"free_cysteines":0.0000},"std":{"nglyc":0.0019,"deamidation":0.0001,"isomerization":0.0000,"oxidation":0.0000,"free_cysteines":0.0000}}}

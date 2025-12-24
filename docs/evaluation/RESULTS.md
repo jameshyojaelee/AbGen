@@ -25,4 +25,15 @@ Sources: `benchmarks/results/baseline_ci_transformer.json`, `baseline_ci_mamba.j
 
 ## Design benchmark
 
-See `outputs/benchmarks/design/summary.json` for the latest run and `scripts/run_design_benchmark.py` for generation settings.
+Latest run summary (from `outputs/benchmarks/design/summary.json`):
+
+| Metric | Value |
+|---|---:|
+| num_candidates | 24 |
+| valid_fraction | 0.7083 |
+| liability_pass_fraction | 0.9583 |
+| unique_fraction | 1.0000 |
+| mean_pairwise_identity | 0.0814 |
+| mean_reward_delta | 0.0423 |
+
+See `scripts/run_design_benchmark.py` for generation settings.
