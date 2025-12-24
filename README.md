@@ -11,7 +11,6 @@ This project is a **research prototype** for in‑silico candidate generation an
 
 - **Next-Gen Architecture**: Choose between **Mamba-S6** (reference implementation; O(L) scan in Python, not optimized) or modernized **Transformers** (RoPE, RMSNorm, SwiGLU).
 - **Generative Alignment**: Align models to biophysical constraints using **Direct Preference Optimization (DPO)**—no reinforcement learning required.
-- **Battle-Tested Engineering**: End-to-end tooling including ETL, distributed training, benchmark registries, and Streamlit dashboards.
 
 ---
 
