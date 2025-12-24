@@ -4,6 +4,8 @@
 
 AbGen moves beyond simple property prediction to true *generative design*. It combines modern engineering (RoPE, RMSNorm) with SSM-based sequence modeling (reference implementation of Mamba) to design antibodies that meet complex developability and binding constraints.
 
+This project is a **research prototype** for in‑silico candidate generation and triage; it does **not** replace wet‑lab validation.
+
 ---
 ## Key Features
 
@@ -133,9 +135,6 @@ export ABPROP_DEMO_CHECKPOINT=outputs/transformer_run/checkpoints/best.pt
 python app.py
 ```
 
----
-
-Reality check: this project is a **research prototype** for in‑silico candidate generation and triage; it does **not** replace wet‑lab validation.
 
 ---
 
