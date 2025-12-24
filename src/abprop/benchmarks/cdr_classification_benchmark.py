@@ -1,4 +1,4 @@
-"""CDR classification benchmark for token-level CDR region prediction."""
+"""CDR3 span classification benchmark for substring-derived CDR3 labels."""
 
 from __future__ import annotations
 
@@ -21,20 +21,19 @@ from .registry import Benchmark, BenchmarkConfig, BenchmarkResult, register_benc
 
 @register_benchmark("cdr_classification")
 class CDRClassificationBenchmark(Benchmark):
-    """Token-level CDR region prediction benchmark.
+    """Token-level CDR3 span tagging benchmark (substring-derived labels).
 
     Evaluates the model's ability to classify each token as framework (0) or
-    CDR (1). Provides metrics including:
+    CDR3 span (1). Provides metrics including:
     - Overall precision, recall, F1
-    - Per-position accuracy heatmaps
-    - Per-CDR region metrics (if CDR annotations are granular)
+    - Per-position accuracy summaries
     """
 
     def load_data(self) -> DataLoader:
-        """Load antibody sequences with CDR annotations.
+        """Load antibody sequences with CDR3 span annotations.
 
         Returns:
-            DataLoader with sequences and token-level CDR labels
+            DataLoader with sequences and token-level CDR3 span labels
         """
         dataset = OASDataset(self.config.data_path, split="test")
         collate_fn = build_collate_fn(generate_mlm=False)  # No MLM needed
@@ -46,11 +45,11 @@ class CDRClassificationBenchmark(Benchmark):
         )
 
     def evaluate(self, model: torch.nn.Module, dataloader: DataLoader) -> Dict[str, Any]:
-        """Evaluate CDR classification performance.
+        """Evaluate CDR3 span classification performance.
 
         Args:
             model: AbProp model to evaluate
-            dataloader: DataLoader with CDR-annotated sequences
+            dataloader: DataLoader with CDR3 span annotated sequences
 
         Returns:
             Dictionary containing:
@@ -102,7 +101,7 @@ class CDRClassificationBenchmark(Benchmark):
 
                 logits = outputs["cls_logits"]
                 preds = logits.argmax(dim=-1)
-                mask = token_labels != -100
+                mask = (token_labels != -100) & attention_mask.bool()
 
                 # Compute confusion matrix
                 tp += int(((preds == 1) & (token_labels == 1) & mask).sum().item())
@@ -110,25 +109,28 @@ class CDRClassificationBenchmark(Benchmark):
                 tn += int(((preds == 0) & (token_labels == 0) & mask).sum().item())
                 fn += int(((preds == 0) & (token_labels == 1) & mask).sum().item())
 
-                # Per-position accuracy
+                # Per-position accuracy (relative to residue index; exclude BOS/EOS)
                 for seq_idx in range(input_ids.size(0)):
                     seq_mask = mask[seq_idx]
-                    seq_len = seq_mask.sum().item()
-                    seq_preds = preds[seq_idx][:seq_len]
-                    seq_labels = token_labels[seq_idx][:seq_len]
-
-                    correct = (seq_preds == seq_labels).cpu().numpy()
-                    position_correct[:seq_len] += correct.astype(np.int64)
-                    position_total[:seq_len] += 1
+                    positions = torch.nonzero(seq_mask, as_tuple=False).view(-1)
+                    for pos in positions.tolist():
+                        if pos == 0:
+                            continue
+                        rel_idx = pos - 1
+                        if rel_idx >= max_len:
+                            continue
+                        is_correct = int(preds[seq_idx, pos] == token_labels[seq_idx, pos])
+                        position_correct[rel_idx] += is_correct
+                        position_total[rel_idx] += 1
 
                     # Per-chain metrics
                     chain_value = None
                     if chains_meta is not None and seq_idx < len(chains_meta):
                         chain_value = chains_meta[seq_idx]
                     chain = chain_value if chain_value else "unknown"
-                    chain_mask = seq_mask[:seq_len]
-                    chain_preds = seq_preds[:seq_len]
-                    chain_labels = seq_labels[:seq_len]
+                    chain_mask = seq_mask
+                    chain_preds = preds[seq_idx][chain_mask]
+                    chain_labels = token_labels[seq_idx][chain_mask]
 
                     by_chain[chain]["tp"] += int(
                         ((chain_preds == 1) & (chain_labels == 1)).sum().item()
@@ -177,7 +179,7 @@ class CDRClassificationBenchmark(Benchmark):
         }
 
     def report(self, results: Dict[str, Any]) -> BenchmarkResult:
-        """Generate CDR classification report with visualizations.
+        """Generate CDR3 span classification report with visualizations.
 
         Creates:
         - Confusion matrix heatmap
@@ -220,13 +222,13 @@ class CDRClassificationBenchmark(Benchmark):
             annot=True,
             fmt="d",
             cmap="Blues",
-            xticklabels=["Framework", "CDR"],
-            yticklabels=["Framework", "CDR"],
+            xticklabels=["Framework", "CDR3"],
+            yticklabels=["Framework", "CDR3"],
             ax=ax,
         )
         ax.set_xlabel("Predicted")
         ax.set_ylabel("Actual")
-        ax.set_title("CDR Classification Confusion Matrix")
+        ax.set_title("CDR3 Span Classification Confusion Matrix")
         plt.tight_layout()
         plot_path = output_dir / "confusion_matrix.png"
         fig.savefig(plot_path, dpi=150)
@@ -245,7 +247,7 @@ class CDRClassificationBenchmark(Benchmark):
             ax.plot(positions, valid_acc, linewidth=1.5, color="darkblue")
             ax.set_xlabel("Position")
             ax.set_ylabel("Accuracy")
-            ax.set_title("Per-Position CDR Classification Accuracy")
+            ax.set_title("Per-Position CDR3 Span Accuracy")
             ax.set_ylim([0, 1.05])
             ax.grid(alpha=0.3)
             plt.tight_layout()

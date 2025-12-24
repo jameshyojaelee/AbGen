@@ -1,4 +1,4 @@
-name: abprop
+name: abgen
 
 conda_env: ./.conda/abprop
 

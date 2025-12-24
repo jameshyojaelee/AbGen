@@ -12,9 +12,9 @@ from typing import Dict, List, Optional
 import torch
 
 from abprop.generation import decode_sequences, random_sequences, sample_mlm_edit
-from abprop.models import AbPropModel, TransformerConfig
+from abprop.models import AbPropModel
+from abprop.models.loading import load_model_from_checkpoint
 from abprop.tokenizers import TOKEN_TO_ID
-from abprop.utils import extract_model_config, load_yaml_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,23 +38,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_model(checkpoint: Path, model_config: Path, device: torch.device) -> AbPropModel:
-    cfg = load_yaml_config(model_config)
-    if isinstance(cfg, dict) and isinstance(cfg.get("model"), dict):
-        cfg = cfg["model"]
-
-    state = torch.load(checkpoint, map_location="cpu")
-    checkpoint_cfg = extract_model_config(state)
-    if checkpoint_cfg:
-        cfg = {**cfg, **checkpoint_cfg}
-
-    if cfg:
-        allowed = set(TransformerConfig.__dataclass_fields__.keys())
-        cfg = {key: value for key, value in cfg.items() if key in allowed}
-    config = TransformerConfig(**cfg) if cfg else TransformerConfig()
-    model = AbPropModel(config).to(device)
-    model_state = state.get("model_state", state)
-    model.load_state_dict(model_state, strict=False)
-    model.eval()
+    model, _, _ = load_model_from_checkpoint(checkpoint, model_config, device)
     return model
 
 

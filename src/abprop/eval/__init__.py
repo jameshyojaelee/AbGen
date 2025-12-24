@@ -12,6 +12,7 @@ from .uncertainty import (
     regression_uncertainty_summary,
     stack_samples,
 )
+from .pseudolikelihood import build_mlm_mask, mlm_pseudologp, mlm_pseudologp_from_logits
 from .stratified import (
     StratifiedEvalConfig,
     StratifiedEvaluationResult,
@@ -39,4 +40,7 @@ __all__ = [
     "stack_samples",
     "discover_strata",
     "evaluate_strata",
+    "build_mlm_mask",
+    "mlm_pseudologp",
+    "mlm_pseudologp_from_logits",
 ]

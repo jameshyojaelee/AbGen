@@ -6,4 +6,5 @@
 - Reproducibility: `docs/reference/REPRODUCIBILITY.md`
 - Status: `docs/STATUS.md`
 - Repo layout: `docs/REPO_LAYOUT.md`
-
+- Claims & evidence: `docs/reference/CLAIMS.md`
+- Release checklist: `docs/reference/RELEASE_CHECKLIST.md`

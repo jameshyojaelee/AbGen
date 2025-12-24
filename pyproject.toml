@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "AbProp Team", email = "ml@abprop.local"}
+    {name = "AbGen Team", email = "ml@abgen.local"}
 ]
 keywords = ["antibody", "protein", "machine-learning", "pytorch"]
 classifiers = [

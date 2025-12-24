@@ -1,6 +1,6 @@
 # AbGen Playbook
 
-This is the consolidated documentation for the AbGen/AbProp codebase: setup, training, evaluation,
+This is the consolidated documentation for the AbGen codebase (package name: `abprop`): setup, training, evaluation,
 generation, preferences/DPO, benchmarks, and guardrails.
 
 ## Navigation
@@ -136,7 +136,7 @@ Perplexity in this repo refers to **MLM perplexity** computed on masked tokens (
 | Masked language modeling (Transformer) | Perplexity ↓ | **1.95** | 2.01 | real | Baseline checkpoint (`benchmarks/results/baseline_example.json`) |
 | Masked language modeling (Mamba) | Perplexity ↓ | inf | inf | real | Synthetic-trained Mamba guardrail run; perplexity diverged on real eval |
 | Preference alignment (DPO) | DPO loss ↓ | 0.686 | 0.686 | synthetic | Last-step synthetic DPO loss from `outputs/dpo_guardrail/metrics.json` |
-| CDR identification | Macro F1 ↑ | **0.89** | 0.88 | real | Token classifier on OAS hold-out |
+| CDR3 span tagging (substring-derived) | Macro F1 ↑ | **0.89** | 0.88 | real | Token classifier on OAS hold-out |
 | Liability regression | RMSE ↓ | **0.27** | 0.29 | real | MC-dropout (32 samples) uncertainty < 0.05 median |
 
 Design benchmark (`outputs/benchmarks/design/summary.json`):

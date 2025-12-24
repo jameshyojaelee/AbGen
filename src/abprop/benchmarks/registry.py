@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
+import importlib
 
 import torch
 from torch.utils.data import DataLoader
@@ -160,7 +161,7 @@ class BenchmarkRegistry:
         Returns:
             List of benchmark names
         """
-        return list(self._benchmarks.keys())
+        return sorted(set(self._benchmarks.keys()) | set(_LAZY_IMPORTS.keys()))
 
     def create(self, name: str, config: BenchmarkConfig) -> Benchmark:
         """Create a benchmark instance by name.
@@ -177,6 +178,9 @@ class BenchmarkRegistry:
         """
         benchmark_cls = self.get(name)
         if benchmark_cls is None:
+            _lazy_import(name)
+            benchmark_cls = self.get(name)
+        if benchmark_cls is None:
             raise ValueError(
                 f"Benchmark '{name}' not found. Available: {self.list_benchmarks()}"
             )
@@ -185,6 +189,30 @@ class BenchmarkRegistry:
 
 # Global registry instance
 _REGISTRY: Optional[BenchmarkRegistry] = None
+
+
+_LAZY_IMPORTS: Dict[str, str] = {
+    "perplexity": "abprop.benchmarks.perplexity_benchmark",
+    "cdr_classification": "abprop.benchmarks.cdr_classification_benchmark",
+    "liability": "abprop.benchmarks.liability_benchmark",
+    "developability": "abprop.benchmarks.developability_benchmark",
+    "zero_shot": "abprop.benchmarks.zero_shot_benchmark",
+    "design": "abprop.benchmarks.design_benchmark",
+    "stratified_difficulty": "abprop.benchmarks.stratified_benchmark",
+}
+
+
+def _lazy_import(name: str) -> None:
+    module = _LAZY_IMPORTS.get(name)
+    if not module:
+        return
+    try:
+        importlib.import_module(module)
+    except ImportError as exc:  # pragma: no cover - depends on optional deps
+        raise ImportError(
+            f"Optional dependencies required for benchmark '{name}'. "
+            "Install with `pip install '.[bench]'`."
+        ) from exc
 
 
 def get_registry() -> BenchmarkRegistry:

@@ -81,6 +81,8 @@ outputs = model(input_ids, torch.ones_like(input_ids))
 print(f"Logits: {outputs['mlm_logits'].shape}")
 ```
 
+Note: the Python package name is `abprop` even though the project is called **AbGen**.
+
 ### 5. DPO Alignment (Synthetic Example)
 
 Align a policy checkpoint with a synthetic preference dataset:
@@ -102,7 +104,9 @@ python scripts/train_dpo.py \
 |----|----------|--------|--------|-------------|
 | `abgen-mamba-s` | **Mamba (S6)** | DPO | **Aligned** | Generative model aligned for low immunogenicity preference |
 | `abgen-base-v2` | Transformer++ | MLM | 1.85 PPL | RoPE + RMSNorm + SwiGLU baseline |
-| `abprop-legacy` | BERT | MLM | 1.95 PPL | Legacy architecture (for comparison) |
+| `abgen-legacy` | BERT | MLM | 1.95 PPL | Legacy architecture (for comparison) |
+
+Model zoo entries are illustrative; use `models/registry.json` for locally tracked runs.
 
 Perplexity in this repo refers to **MLM perplexity** computed on masked tokens (default 15% mask rate), not causal/next-token perplexity.
 

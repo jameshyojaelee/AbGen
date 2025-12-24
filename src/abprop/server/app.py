@@ -15,8 +15,9 @@ except ImportError:  # pragma: no cover - exercised in non-serve installs
 
 from abprop.eval.perplexity import mlm_perplexity_from_logits
 from abprop.models import AbPropModel, TransformerConfig
+from abprop.models.loading import load_model_from_checkpoint
 from abprop.tokenizers import apply_mlm_mask, batch_encode
-from abprop.utils import extract_model_config, load_yaml_config
+from abprop.utils import load_yaml_config
 
 
 class ModelWrapper:
@@ -35,52 +36,26 @@ class ModelWrapper:
             cfg = cfg["model"]
 
         checkpoint_paths = checkpoint if isinstance(checkpoint, list) else [checkpoint]
-        checkpoint_state = torch.load(checkpoint_paths[0], map_location=self.device, weights_only=False)
-        checkpoint_cfg = extract_model_config(checkpoint_state)
-        if checkpoint_cfg:
-            cfg = {**cfg, **checkpoint_cfg}
-
-        self.model_cfg = TransformerConfig(
-            vocab_size=cfg.get("vocab_size", TransformerConfig.vocab_size),
-            d_model=cfg.get("d_model", TransformerConfig.d_model),
-            nhead=cfg.get("nhead", TransformerConfig.nhead),
-            num_layers=cfg.get("num_layers", TransformerConfig.num_layers),
-            dim_feedforward=cfg.get("dim_feedforward", TransformerConfig.dim_feedforward),
-            dropout=cfg.get("dropout", TransformerConfig.dropout),
-            max_position_embeddings=cfg.get(
-                "max_position_embeddings", TransformerConfig.max_position_embeddings
-            ),
-            liability_keys=tuple(cfg.get("liability_keys", list(TransformerConfig.liability_keys))),
-            encoder_type=cfg.get("encoder_type", TransformerConfig.encoder_type),
-            use_rope=cfg.get("use_rope", TransformerConfig.use_rope),
-            norm_type=cfg.get("norm_type", TransformerConfig.norm_type),
-            activation=cfg.get("activation", TransformerConfig.activation),
-            ssm_d_state=cfg.get("ssm_d_state", TransformerConfig.ssm_d_state),
-            ssm_d_conv=cfg.get("ssm_d_conv", TransformerConfig.ssm_d_conv),
-            ssm_expand=cfg.get("ssm_expand", TransformerConfig.ssm_expand),
-            ssm_dt_rank=cfg.get("ssm_dt_rank", TransformerConfig.ssm_dt_rank),
+        first_model, model_cfg, _ = load_model_from_checkpoint(
+            checkpoint_paths[0],
+            model_config,
+            self.device,
         )
-        self.mlm_probability = float(cfg.get("mlm_probability", 0.15))
+        self.model_cfg = model_cfg
+        self.mlm_probability = float(cfg.get("mlm_probability", 0.15) if isinstance(cfg, dict) else 0.15)
 
         # Load single or multiple models
         if isinstance(checkpoint, list):
             self.models = []
-            for idx, ckpt in enumerate(checkpoint):
-                model = AbPropModel(self.model_cfg).to(self.device)
-                state = checkpoint_state if idx == 0 else torch.load(
-                    ckpt, map_location=self.device, weights_only=False
-                )
-                model_state = state.get("model_state_dict", state.get("model_state", state))
-                model.load_state_dict(model_state, strict=False)
-                model.eval()
+            for idx, ckpt in enumerate(checkpoint_paths):
+                if idx == 0:
+                    model = first_model
+                else:
+                    model, _, _ = load_model_from_checkpoint(ckpt, model_config, self.device)
                 self.models.append(model)
             self.ensemble_mode = True
         else:
-            self.model = AbPropModel(self.model_cfg).to(self.device)
-            state = checkpoint_state
-            model_state = state.get("model_state_dict", state.get("model_state", state))
-            self.model.load_state_dict(model_state, strict=False)
-            self.model.eval()
+            self.model = first_model
             self.models = [self.model]
 
         self.max_length = int(self.model_cfg.max_position_embeddings)
@@ -164,13 +139,30 @@ class ModelWrapper:
 
         return mean_results
 
+    def _build_mlm_mask(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        *,
+        mask_seed: int | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        generator = torch.Generator(device=input_ids.device)
+        seed = 0 if mask_seed is None else int(mask_seed)
+        generator.manual_seed(seed)
+        return apply_mlm_mask(
+            input_ids,
+            attention_mask,
+            mlm_probability=self.mlm_probability,
+            rng=generator,
+        )
+
     def score_perplexity_uncertainty(
         self,
         sequences: List[str],
         *,
         mc_samples: int = 20,
         dropout: bool = True,
-        pad_token_id: int = 0,
+        mask_seed: int | None = None,
     ) -> Dict[str, List[float]]:
         """Return mean and variance of perplexity estimates via MC dropout / ensembles."""
         if mc_samples <= 0:
@@ -183,6 +175,11 @@ class ModelWrapper:
         )
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
+        masked_input_ids, labels = self._build_mlm_mask(
+            input_ids,
+            attention_mask,
+            mask_seed=mask_seed,
+        )
 
         sample_perplexities: List[torch.Tensor] = []
         mc_passes = mc_samples if dropout else 1
@@ -338,8 +335,15 @@ def create_app(
             raise HTTPException(status_code=400, detail="provide non-empty 'sequences' list")
         mc_samples = int(payload.get("mc_samples", 20))
         dropout = bool(payload.get("dropout", True))
+        mask_seed = payload.get("mask_seed")
+        mask_seed = int(mask_seed) if mask_seed is not None else None
         try:
-            stats = wrapper.score_perplexity_uncertainty(sequences, mc_samples=mc_samples, dropout=dropout)
+            stats = wrapper.score_perplexity_uncertainty(
+                sequences,
+                mc_samples=mc_samples,
+                dropout=dropout,
+                mask_seed=mask_seed,
+            )
         except ValueError as err:
             raise HTTPException(status_code=400, detail=str(err))
         return {"perplexity": stats}

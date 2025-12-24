@@ -3,7 +3,7 @@
 This module provides a modular benchmark infrastructure for evaluating antibody
 property prediction models across multiple dimensions including:
 - Perplexity on natural sequences
-- CDR region classification
+- CDR3 span classification (substring-derived labels)
 - Liability prediction
 - Developability assessment
 - Zero-shot generalization
@@ -30,14 +30,22 @@ from __future__ import annotations
 
 from .registry import Benchmark, BenchmarkConfig, BenchmarkRegistry, BenchmarkResult, get_registry
 
-# Import all benchmark implementations to trigger registration
-from . import cdr_classification_benchmark
-from . import design_benchmark
-from . import developability_benchmark
-from . import liability_benchmark
-from . import perplexity_benchmark
-from . import stratified_benchmark
-from . import zero_shot_benchmark
+_MODULE_ALIASES = {
+    "cdr_classification_benchmark": "abprop.benchmarks.cdr_classification_benchmark",
+    "design_benchmark": "abprop.benchmarks.design_benchmark",
+    "developability_benchmark": "abprop.benchmarks.developability_benchmark",
+    "liability_benchmark": "abprop.benchmarks.liability_benchmark",
+    "perplexity_benchmark": "abprop.benchmarks.perplexity_benchmark",
+    "stratified_benchmark": "abprop.benchmarks.stratified_benchmark",
+    "zero_shot_benchmark": "abprop.benchmarks.zero_shot_benchmark",
+}
+
+
+def __getattr__(name: str):  # pragma: no cover - import-time dispatch
+    module = _MODULE_ALIASES.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return __import__(module, fromlist=[name])
 
 __all__ = [
     "Benchmark",

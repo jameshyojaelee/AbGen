@@ -64,13 +64,15 @@ class DPOLoss(nn.Module):
         
         # DPO Loss = -log sigmoid(logits)
         # Using softplus for stability: -log(sigmoid(x)) = log(1 + exp(-x)) = softplus(-x)
-        losses = F.softplus(-logits)
-        
         if self.label_smoothing > 0:
-            # simple smoothing implementation
-            losses = losses * (1 - self.label_smoothing) + self.label_smoothing * 0.5 # dummy
-            
-        return losses.mean(), self.beta * policy_logratios.detach(), self.beta * (policy_rejected_logps - ref_rejected_logps).detach()
+            target = torch.full_like(logits, 1.0 - float(self.label_smoothing))
+            losses = F.binary_cross_entropy_with_logits(logits, target, reduction="none")
+        else:
+            losses = F.softplus(-logits)
+
+        reward_chosen = self.beta * (policy_chosen_logps - ref_chosen_logps).detach()
+        reward_rejected = self.beta * (policy_rejected_logps - ref_rejected_logps).detach()
+        return losses.mean(), reward_chosen, reward_rejected
 
 def get_batch_logps(
     logits: torch.Tensor, 
@@ -96,6 +98,6 @@ def get_batch_logps(
     per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
 
     if average_log_prob:
-        return (per_token_logps * loss_mask).sum(-1) / loss_mask.sum(-1)
-    else:
-        return (per_token_logps * loss_mask).sum(-1)
+        denom = loss_mask.sum(-1).clamp_min(1)
+        return (per_token_logps * loss_mask).sum(-1) / denom
+    return (per_token_logps * loss_mask).sum(-1)

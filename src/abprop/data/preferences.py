@@ -65,8 +65,15 @@ def collate_preference_batch(
     add_special: bool = True,
     invalid_policy: str = "replace",
 ) -> Dict[str, torch.Tensor | List[str] | List[Dict[str, Any]]]:
-    chosen_sequences = [ex.prompt + ex.chosen for ex in examples]
-    rejected_sequences = [ex.prompt + ex.rejected for ex in examples]
+    def _compose(prompt: str, completion: str, label: str) -> str:
+        prompt = str(prompt or "")
+        completion = str(completion or "")
+        if not completion.strip():
+            raise ValueError(f"{label} sequence must be non-empty.")
+        return f"{prompt}{completion}" if prompt else completion
+
+    chosen_sequences = [_compose(ex.prompt, ex.chosen, "chosen") for ex in examples]
+    rejected_sequences = [_compose(ex.prompt, ex.rejected, "rejected") for ex in examples]
 
     chosen_batch = batch_encode(
         chosen_sequences,

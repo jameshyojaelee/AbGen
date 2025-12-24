@@ -6,7 +6,6 @@ from typing import Callable, Dict, Iterable, Sequence, Tuple
 
 import numpy as np
 import torch
-from scipy import stats
 
 
 def compute_perplexity(total_loss: float, token_count: int) -> float:
@@ -194,13 +193,13 @@ def kl_divergence(p: torch.Tensor, q: torch.Tensor, epsilon: float = 1e-8) -> fl
 
 def wasserstein_1d(p: torch.Tensor, q: torch.Tensor) -> float:
     """Compute the 1D Wasserstein distance between two samples."""
-
+    stats = _require_scipy()
     return float(stats.wasserstein_distance(p.view(-1).cpu().numpy(), q.view(-1).cpu().numpy()))
 
 
 def kendall_tau(predictions: torch.Tensor, targets: torch.Tensor) -> float:
     """Compute Kendall's Tau rank correlation."""
-
+    stats = _require_scipy()
     preds = predictions.view(-1).detach().cpu().numpy()
     targs = targets.view(-1).detach().cpu().numpy()
     if preds.size == 0:
@@ -209,6 +208,17 @@ def kendall_tau(predictions: torch.Tensor, targets: torch.Tensor) -> float:
     if np.isnan(tau):
         return 0.0
     return float(tau)
+
+
+def _require_scipy():
+    try:
+        from scipy import stats  # type: ignore
+    except ImportError as exc:  # pragma: no cover - depends on optional dep
+        raise ImportError(
+            "scipy is required for wasserstein_1d/kendall_tau. "
+            "Install with `pip install '.[bench]'`."
+        ) from exc
+    return stats
 
 
 def bootstrap_confidence_interval(

@@ -21,3 +21,14 @@ reloaded by `abprop.utils.extract_model_config` when evaluating or serving.
 Processed data is expected under `data/processed/oas_real_full/`. Raw/interim/processed
 folders are gitignored. Small, tracked fixtures live under `tests/fixtures/`.
 
+## Optional dependencies
+
+The core library (`abprop`, `abprop.models`, `abprop.eval`) is designed to import with a
+minimal install. Benchmarks and visualizations require extras:
+
+- `.[bench]` → SciPy, scikit-learn, seaborn, MLflow (benchmarks/reporting)
+- `.[viz]` → plotly, umap-learn (embedding visualization)
+- `.[dashboard]` → streamlit (interactive dashboard)
+
+If optional dependencies are missing, benchmark-only utilities will raise a clear
+ImportError with an install hint.

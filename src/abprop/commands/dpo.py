@@ -13,11 +13,13 @@ import torch
 from torch.utils.data import DataLoader
 
 from abprop.data.preferences import PreferenceDataset, PreferenceExample, collate_preference_batch
-from abprop.models import AbPropModel, TransformerConfig
+from abprop.models import AbPropModel
+from abprop.models.loading import load_model_from_checkpoint
 from abprop.registry import ModelRegistry
-from abprop.tokenizers import TOKEN_TO_ID, apply_mlm_mask
-from abprop.train.dpo import DPOLoss, get_batch_logps
-from abprop.utils import DEFAULT_OUTPUT_DIR, extract_model_config, load_yaml_config, seed_all
+from abprop.tokenizers import TOKEN_TO_ID
+from abprop.eval.pseudolikelihood import build_mlm_mask, mlm_pseudologp
+from abprop.train.dpo import DPOLoss
+from abprop.utils import DEFAULT_OUTPUT_DIR, seed_all
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -60,22 +62,7 @@ def _load_model(
     model_config: Path,
     device: torch.device,
 ) -> AbPropModel:
-    cfg = load_yaml_config(model_config)
-    if isinstance(cfg, dict) and isinstance(cfg.get("model"), dict):
-        cfg = cfg["model"]
-
-    state = torch.load(checkpoint, map_location="cpu")
-    checkpoint_cfg = extract_model_config(state)
-    if checkpoint_cfg:
-        cfg = {**cfg, **checkpoint_cfg}
-
-    if cfg:
-        allowed = set(TransformerConfig.__dataclass_fields__.keys())
-        cfg = {key: value for key, value in cfg.items() if key in allowed}
-    config = TransformerConfig(**cfg) if cfg else TransformerConfig()
-    model = AbPropModel(config).to(device)
-    model_state = state.get("model_state", state)
-    model.load_state_dict(model_state, strict=False)
+    model, _, _ = load_model_from_checkpoint(checkpoint, model_config, device)
     return model
 
 
@@ -107,12 +94,17 @@ def _ensure_masked_positions(
 
 def _compute_logps(
     model: AbPropModel,
-    input_ids: torch.Tensor,
+    masked_input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
     labels: torch.Tensor,
 ) -> torch.Tensor:
-    logits = model(input_ids, attention_mask, tasks=("mlm",))["mlm_logits"]
-    return get_batch_logps(logits, labels, average_log_prob=True)
+    return mlm_pseudologp(
+        model,
+        masked_input_ids,
+        attention_mask,
+        labels,
+        average_log_prob=True,
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -162,15 +154,18 @@ def main(argv: list[str] | None = None) -> None:
         rejected_ids = batch["rejected_input_ids"].to(device)
         rejected_mask = batch["rejected_attention_mask"].to(device)
 
-        masked_chosen, chosen_labels = apply_mlm_mask(
+        mask_seed = args.seed + step * 2
+        masked_chosen, chosen_labels = build_mlm_mask(
             chosen_ids,
             chosen_mask,
             mlm_probability=args.mlm_probability,
+            mask_seed=mask_seed,
         )
-        masked_rejected, rejected_labels = apply_mlm_mask(
+        masked_rejected, rejected_labels = build_mlm_mask(
             rejected_ids,
             rejected_mask,
             mlm_probability=args.mlm_probability,
+            mask_seed=mask_seed + 1,
         )
         _ensure_masked_positions(chosen_ids, chosen_mask, masked_chosen, chosen_labels)
         _ensure_masked_positions(rejected_ids, rejected_mask, masked_rejected, rejected_labels)

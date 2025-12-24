@@ -15,6 +15,7 @@ from .transformer import (
     SmallEncoder,
     TransformerConfig,
 )
+from .loading import load_model_from_checkpoint, resolve_model_config
 
 
 class SimpleTransformerEncoder(nn.Module):
@@ -59,4 +60,6 @@ __all__ = [
     "LiabilityRegHead",
     "AbPropModel",
     "SimpleTransformerEncoder",
+    "load_model_from_checkpoint",
+    "resolve_model_config",
 ]

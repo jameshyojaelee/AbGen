@@ -11,9 +11,9 @@ from typing import Dict, Iterable, List, Tuple
 
 import torch
 
-from abprop.models import AbPropModel, TransformerConfig
+from abprop.models import AbPropModel
+from abprop.models.loading import load_model_from_checkpoint
 from abprop.rewards import build_reward
-from abprop.utils import extract_model_config, load_yaml_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,23 +66,7 @@ def mutate_sequence(seq: str, rng: random.Random, edits: int) -> str:
 
 
 def load_model(checkpoint: Path, model_config: Path, device: torch.device) -> AbPropModel:
-    cfg = load_yaml_config(model_config)
-    if isinstance(cfg, dict) and isinstance(cfg.get("model"), dict):
-        cfg = cfg["model"]
-
-    state = torch.load(checkpoint, map_location="cpu")
-    checkpoint_cfg = extract_model_config(state)
-    if checkpoint_cfg:
-        cfg = {**cfg, **checkpoint_cfg}
-
-    if cfg:
-        allowed = set(TransformerConfig.__dataclass_fields__.keys())
-        cfg = {key: value for key, value in cfg.items() if key in allowed}
-    config = TransformerConfig(**cfg) if cfg else TransformerConfig()
-    model = AbPropModel(config).to(device)
-    model_state = state.get("model_state", state)
-    model.load_state_dict(model_state, strict=False)
-    model.eval()
+    model, _, _ = load_model_from_checkpoint(checkpoint, model_config, device)
     return model
 
 
@@ -120,11 +104,12 @@ def main() -> None:
         rejected = candidates[worst_idx]
 
         record = {
-            "prompt": seed_seq,
+            "prompt": "",
             "chosen": chosen,
             "rejected": rejected,
             "metadata": {
                 "seed_index": idx,
+                "seed_sequence": seed_seq,
                 "reward_chosen": rewards[best_idx].to_dict(),
                 "reward_rejected": rewards[worst_idx].to_dict(),
             },

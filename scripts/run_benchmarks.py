@@ -22,9 +22,9 @@ import torch
 
 from abprop.benchmarks import get_registry
 from abprop.benchmarks.registry import BenchmarkConfig, BenchmarkResult
-from abprop.models import AbPropModel, TransformerConfig
+from abprop.models import AbPropModel
+from abprop.models.loading import load_model_from_checkpoint
 from abprop.utils import (
-    extract_model_config,
     load_yaml_config,
     mlflow_default_tags,
     mlflow_log_artifact,
@@ -114,57 +114,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def instantiate_model(model_cfg: Dict, checkpoint_path: Path, device: str) -> AbPropModel:
-    """Load model from checkpoint.
-
-    Args:
-        model_cfg: Model configuration dictionary
-        checkpoint_path: Path to checkpoint file
-        device: Device to load model on
-
-    Returns:
-        Loaded AbProp model
-    """
-    state = torch.load(checkpoint_path, map_location=device)
-    checkpoint_cfg = extract_model_config(state)
-    if checkpoint_cfg:
-        model_cfg = {**model_cfg, **checkpoint_cfg}
-
-    # Build model config
-    defaults = TransformerConfig()
-    task_weights = model_cfg.get("task_weights", {})
-    config = TransformerConfig(
-        vocab_size=model_cfg.get("vocab_size", defaults.vocab_size),
-        d_model=model_cfg.get("d_model", defaults.d_model),
-        nhead=model_cfg.get("nhead", defaults.nhead),
-        num_layers=model_cfg.get("num_layers", defaults.num_layers),
-        dim_feedforward=model_cfg.get("dim_feedforward", defaults.dim_feedforward),
-        dropout=model_cfg.get("dropout", defaults.dropout),
-        max_position_embeddings=model_cfg.get("max_position_embeddings", defaults.max_position_embeddings),
-        liability_keys=tuple(model_cfg.get("liability_keys", list(defaults.liability_keys))),
-        mlm_weight=task_weights.get("mlm", defaults.mlm_weight),
-        cls_weight=task_weights.get("cls", defaults.cls_weight),
-        reg_weight=task_weights.get("reg", defaults.reg_weight),
-        encoder_type=model_cfg.get("encoder_type", defaults.encoder_type),
-        use_rope=model_cfg.get("use_rope", defaults.use_rope),
-        norm_type=model_cfg.get("norm_type", defaults.norm_type),
-        activation=model_cfg.get("activation", defaults.activation),
-        ssm_d_state=model_cfg.get("ssm_d_state", defaults.ssm_d_state),
-        ssm_d_conv=model_cfg.get("ssm_d_conv", defaults.ssm_d_conv),
-        ssm_expand=model_cfg.get("ssm_expand", defaults.ssm_expand),
-        ssm_dt_rank=model_cfg.get("ssm_dt_rank", defaults.ssm_dt_rank),
-    )
-
-    # Instantiate model
-    model = AbPropModel(config)
-
-    # Load checkpoint
-    model_state = state.get("model_state", state)
-    model.load_state_dict(model_state, strict=False)
-
-    model.to(device)
-    model.eval()
-
+def instantiate_model(checkpoint_path: Path, model_config_path: Path, device: str) -> AbPropModel:
+    model, _, _ = load_model_from_checkpoint(checkpoint_path, model_config_path, device)
     return model
 
 
@@ -308,21 +259,10 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Warning: Benchmark config not found at {args.config}, using defaults")
         benchmark_cfg = {}
 
-    model_cfg = load_yaml_config(args.model_config)
-
     # Load model
     print(f"Loading model from {args.checkpoint}...")
-    model = instantiate_model(model_cfg, args.checkpoint, args.device)
+    model = instantiate_model(args.checkpoint, args.model_config, args.device)
     print("Model loaded successfully")
-
-    # Register all benchmarks
-    # Import to trigger registration
-    from abprop.benchmarks import cdr_classification_benchmark  # noqa: F401
-    from abprop.benchmarks import developability_benchmark  # noqa: F401
-    from abprop.benchmarks import liability_benchmark  # noqa: F401
-    from abprop.benchmarks import perplexity_benchmark  # noqa: F401
-    from abprop.benchmarks import stratified_benchmark  # noqa: F401
-    from abprop.benchmarks import zero_shot_benchmark  # noqa: F401
 
     registry = get_registry()
     available_benchmarks = registry.list_benchmarks()

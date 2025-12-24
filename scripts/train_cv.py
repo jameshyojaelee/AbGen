@@ -252,14 +252,16 @@ def train_single_fold(
     metrics: Dict[str, float] = {}
     if train_loop.eval_history:
         last_eval = train_loop.eval_history[-1]
-        metrics = {k: v for k, v in last_eval.items() if k.startswith("eval_")}
+        metrics = {
+            f"eval_{k}": v for k, v in last_eval.items() if k != "step"
+        }
 
     # Get best metrics from checkpoint
     best_ckpt_path = fold_output_dir / "checkpoints" / "best.pt"
     if best_ckpt_path.exists() and rank == 0:
         checkpoint = torch.load(best_ckpt_path, map_location="cpu", weights_only=False)
-        if "eval_metrics" in checkpoint:
-            for k, v in checkpoint["eval_metrics"].items():
+        if "metrics" in checkpoint:
+            for k, v in checkpoint["metrics"].items():
                 metrics["best_" + k] = v
 
     return metrics

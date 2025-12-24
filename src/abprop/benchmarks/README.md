@@ -7,7 +7,7 @@ Comprehensive benchmark infrastructure for evaluating antibody property predicti
 The AbProp benchmark suite provides standardized evaluation tracks to measure model performance on various antibody-related tasks:
 
 - **Perplexity Benchmark**: Language modeling quality on natural antibody sequences
-- **CDR Classification Benchmark**: Token-level CDR region prediction
+- **CDR3 Span Classification Benchmark**: Token-level CDR3 span prediction (substring-derived)
 - **Liability Benchmark**: Regression metrics for developability liabilities
 - **Developability Benchmark**: Therapeutic antibody ranking and clinical progression
 - **Zero-Shot Benchmark**: Generalization to unseen species and germlines
@@ -160,9 +160,9 @@ benchmark = registry.create("perplexity", config)
 result = benchmark.run(model)
 ```
 
-### 2. CDR Classification Benchmark
+### 2. CDR3 Span Classification Benchmark
 
-**Purpose**: Evaluate token-level CDR region prediction accuracy.
+**Purpose**: Evaluate token-level CDR3 span prediction accuracy (substring-derived labels).
 
 **Metrics**:
 - Overall precision, recall, F1, accuracy
