@@ -1,11 +1,5 @@
 # AbGen
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10+-3776AB.svg)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.1-orange.svg)](https://pytorch.org/)
-[![Model](https://img.shields.io/badge/Backbone-Mamba%2FSSM-purple.svg)](src/abprop/models/ssm.py)
-[![Design](https://img.shields.io/badge/Design-DPO-red.svg)](src/abprop/train/dpo.py)
-
 **State-of-the-art Generative Antibody Design**, powered by **Selective State Space Models (Mamba)** and **Direct Preference Optimization (DPO)**.
 
 AbGen moves beyond simple property prediction to true *generative design*. It combines modern engineering (RoPE, RMSNorm) with SSM-based sequence modeling (reference implementation of Mamba) to design antibodies that meet complex developability and binding constraints.
@@ -95,6 +89,53 @@ python scripts/train_dpo.py \
   --output-dir outputs/dpo_run \
   --model-id abgen-dpo-demo
 ```
+
+---
+
+## Showcase: design loop (5 minutes, CPU)
+
+1) Generate candidates:
+```bash
+python scripts/generate.py \
+  --checkpoint outputs/transformer_run/checkpoints/best.pt \
+  --num-samples 8 --length 120 --steps 6 \
+  --output-dir outputs/generation
+```
+
+2) Score + rank (liabilities + uncertainty):
+```bash
+python scripts/generate.py \
+  --checkpoint outputs/transformer_run/checkpoints/best.pt \
+  --num-samples 8 --length 120 --steps 6 \
+  --score-liabilities --mc-samples 16 \
+  --output-dir outputs/generation
+```
+
+3) Run the design benchmark:
+```bash
+python scripts/run_design_benchmark.py \
+  --checkpoint outputs/transformer_run/checkpoints/best.pt \
+  --seeds tests/fixtures/toy_sequences.fa \
+  --output-dir outputs/benchmarks
+```
+
+Example output (from `outputs/generation/<run>/candidates.jsonl`):
+```json
+{"id":"cand_0000","sequence":"EVQLVESGGGLVKPGGSLRLSCAASGFTFSSYAMSWVRQAPGKGLEWVS...","length":120,"liabilities":{"nglyc":0.0083,"deamidation":0.0000,"isomerization":0.0000,"oxidation":0.0000,"free_cysteines":0.0000},"uncertainty":{"mean":{"nglyc":0.0102,"deamidation":0.0001,"isomerization":0.0000,"oxidation":0.0000,"free_cysteines":0.0000},"std":{"nglyc":0.0019,"deamidation":0.0001,"isomerization":0.0000,"oxidation":0.0000,"free_cysteines":0.0000}}}
+```
+
+## Demo (Gradio)
+
+```bash
+cd demo
+pip install -r requirements.txt
+export ABPROP_DEMO_CHECKPOINT=outputs/transformer_run/checkpoints/best.pt
+python app.py
+```
+
+---
+
+Reality check: this project is a **research prototype** for in‑silico candidate generation and triage; it does **not** replace wet‑lab validation.
 
 ---
 
